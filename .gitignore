@@ -1,0 +1,39 @@
+# .NET build outputs
+bin/
+obj/
+*.user
+*.suo
+.vs/
+*.DotSettings.user
+
+# NuGet
+packages/
+*.nupkg
+*.snupkg
+project.assets.json
+project.nuget.cache
+packages.lock.json
+
+# MSBuild
+*.binlog
+
+# ClojureCLR
+*.class
+classes/
+target/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.idea/
+*.swp
+*~
+
+# wai session state (handoffs are project-specific, keep artifacts)
+.wai/projects/*/handoff-*.md
+
+# Dolt database files (added by bd init)
+.dolt/
+*.db
