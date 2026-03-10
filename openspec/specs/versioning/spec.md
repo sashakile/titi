@@ -6,6 +6,20 @@ The versioning capability covers NuGet version resolution semantics, Central Pac
 
 ## Requirements
 
+### Requirement: NBGV Integration
+
+The system SHALL integrate with Nerdbank.GitVersioning (NBGV). Version detection SHALL read the current version from `version.json` files via NBGV. Version apply SHALL write updated `version.json` files. Projects without a `version.json` SHALL NOT be managed by titi version commands.
+
+#### Scenario: Version read from version.json
+- **GIVEN** a project with a `version.json` file managed by NBGV
+- **WHEN** `titi version detect` runs
+- **THEN** the current version is read from that project's `version.json` and used as the base for bump calculations
+
+#### Scenario: Project without version.json skipped
+- **GIVEN** a project with no `version.json` file
+- **WHEN** `titi version detect --apply` runs
+- **THEN** the project is skipped and a diagnostic note indicates it is not managed by titi version commands
+
 ### Requirement: NuGet Lowest-Applicable-Version Resolution
 
 The system SHALL document and enforce that NuGet uses lowest-applicable-version resolution: a `PackageReference Version="1.0.0"` means `>= 1.0.0`, not "exactly 1.0.0", and an exact pin requires the interval syntax `[1.0.0]`.
@@ -94,6 +108,26 @@ The system SHALL implement a cascading version bump algorithm that: builds the d
 - **WHEN** bumps are applied
 - **THEN** C receives a minor bump
 
+### Requirement: Changeset File Format
+
+Changeset files SHALL live in the `.changesets/` directory at the repository root. Each file must be a `.yaml` file (filename convention: `<timestamp>-<package-id>.yaml`, though any `.yaml` file in the directory is accepted). Required fields are:
+- `package`: the package ID (e.g. `Orion.Core.Data`)
+- `bump`: one of `patch`, `minor`, or `major`
+- `description`: a human-readable summary of the change
+
+Changeset files are created manually by the developer per PR. Example:
+
+```yaml
+package: Orion.Core.Data
+bump: minor
+description: Add async overloads to IDataService
+```
+
+#### Scenario: titi version detect reads changeset files
+- **GIVEN** two changeset files exist in `.changesets/`: one specifying `Orion.Core.Data` with `bump: minor` and one specifying `Orion.Core.Data` with `bump: patch`
+- **WHEN** `titi version detect` runs
+- **THEN** `Orion.Core.Data` receives a minor bump (highest wins) and the version plan reflects this
+
 ### Requirement: Changeset-Based Workflow
 
 The system SHALL support a changeset-based versioning workflow where each PR includes a changeset file specifying the affected packages and their bump types, and `titi version detect` aggregates changesets to compute final version increments.
@@ -109,7 +143,7 @@ The system SHALL support a changeset-based versioning workflow where each PR inc
 
 #### Scenario: Apply flag writes versions
 - **WHEN** `titi version detect --apply` is invoked
-- **THEN** the version fields in affected .csproj files and `Directory.Packages.props` are updated
+- **THEN** the computed version increments are written to the `version.json` files managed by Nerdbank.GitVersioning (NBGV) for each affected package, and `Directory.Packages.props` is updated for any CPM-pinned entries
 
 ### Requirement: titi version validate
 

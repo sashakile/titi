@@ -13,7 +13,7 @@ The system SHALL accept a `SwapRequest` specifying target projects, a `versionPo
 #### Scenario: Successful source swap
 - **GIVEN** a project references `Orion.Payments` as a NuGet package and a local source project for `Orion.Payments` exists under `sourceRoot`
 - **WHEN** a swap with versionPolicy=STRICT is requested
-- **THEN** the `PackageReference` is replaced with a `ProjectReference` and the swapped entry appears in `SwapResult.swapped`
+- **THEN** the `PackageReference` is retained with `ExcludeAssets="All"` (so it remains in the NuGet graph for transitive resolution) AND a `ProjectReference` to the local source project is injected alongside it; the swapped entry appears in `SwapResult.swapped`
 
 #### Scenario: Version mismatch retained
 - **GIVEN** the local source project version does not match the requested version range and versionPolicy=STRICT
@@ -57,6 +57,11 @@ The system SHALL refuse any swap that would introduce a cycle into the project r
 - **GIVEN** the same cycle risk as above
 - **WHEN** force=true is set on the SwapRequest
 - **THEN** the swap proceeds and the caller is warned via a diagnostic event
+
+#### Scenario: Partial transitive swap with mid-chain cycle
+- **GIVEN** includeTransitive=true and swapping B (a direct dependency) is safe, but swapping C (a transitive dependency of B) would introduce a cycle
+- **WHEN** the swap is attempted
+- **THEN** B is swapped to a source reference, C is retained with `RetainedReason.CYCLE_PREVENTION`, and the `SwapResult` has both `swapped` (containing B) and `retained` (containing C) entries populated
 
 ### Requirement: MSBuild Context Injection
 

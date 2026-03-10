@@ -8,7 +8,7 @@ The diagnostics capability defines how titi surfaces errors, warnings, and struc
 
 ### Requirement: Structured Error Model
 
-The system SHALL represent every user-facing error as a `TitiError` with a unique `ErrorCode`, a human-readable `message`, a `context` block (command, target, phase), and a `suggestions` list of actionable remediation steps.
+The system SHALL represent every user-facing error as a `TitiError` with a unique `ErrorCode`, a human-readable `message`, a `context` block (command, target, phase), and a `suggestions` list of actionable remediation steps. Valid values for the `phase` field are: `config-load`, `graph-build`, `cache-load`, `swap`, `solution-gen`, `manifest-gen`, `build`, `test`.
 
 #### Scenario: Error includes suggestions
 - **GIVEN** error E007 (MSBUILD_NOT_FOUND) is raised
@@ -22,7 +22,7 @@ The system SHALL represent every user-facing error as a `TitiError` with a uniqu
 
 ### Requirement: Error Code Taxonomy
 
-The system SHALL define and document the following error codes: E001 GRAPH_BUILD_FAILED, E002 CYCLE_DETECTED, E003 VERSION_MISMATCH, E004 TFM_INCOMPATIBLE, E005 NO_LOCAL_SOURCE, E006 CACHE_CORRUPT, E007 MSBUILD_NOT_FOUND, E008 GIT_NOT_AVAILABLE, E009 CONFIG_INVALID, E010 BUILD_FAILED, E011 TEST_FAILED. No other error codes SHALL be used for structured errors.
+The system SHALL define and document the following error codes: E001 GRAPH_BUILD_FAILED, E002 CYCLE_DETECTED, E003 VERSION_MISMATCH, E004 TFM_INCOMPATIBLE, E005 NO_LOCAL_SOURCE, E006 CACHE_CORRUPT, E007 MSBUILD_NOT_FOUND, E008 GIT_NOT_AVAILABLE, E009 CONFIG_INVALID, E010 BUILD_FAILED, E011 TEST_FAILED. Additional error codes SHALL NOT be added without a corresponding spec update to this taxonomy.
 
 #### Scenario: Known error code emitted
 - **WHEN** the graph build fails due to a malformed .csproj

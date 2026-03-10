@@ -40,11 +40,13 @@ The system SHALL implement `Directory.Build.targets` swap logic that, when `InTi
 
 ### Requirement: Breaking Property Contract
 
-The system SHALL treat the four properties `InTitiContext`, `TitiPrefix`, `TitiSourceRoot`, and `AccelerateBuildsInVisualStudio` as a public breaking contract: renaming or removing any of them constitutes a breaking change requiring a major version bump.
+The system SHALL treat the three properties `InTitiContext`, `TitiPrefix`, and `TitiSourceRoot` as titi-owned public breaking contract properties: renaming or removing any of them constitutes a breaking change requiring a major version bump.
+
+> **Note:** `AccelerateBuildsInVisualStudio` is NOT a titi-defined property. It is a Visual Studio convention that titi adopts by setting it in the generated solution. titi does not own its contract; changes to its semantics are governed by Visual Studio, not titi's versioning policy.
 
 #### Scenario: Contract properties documented
 - **WHEN** the titi changelog or release notes are inspected
-- **THEN** any modification to the contract properties is explicitly flagged as breaking
+- **THEN** any modification to the titi-owned contract properties (`InTitiContext`, `TitiPrefix`, `TitiSourceRoot`) is explicitly flagged as breaking
 
 #### Scenario: Downstream build uses contract properties
 - **GIVEN** a consumer's `Directory.Build.targets` references `$(InTitiContext)` by name
@@ -64,6 +66,20 @@ The system SHALL set `AccelerateBuildsInVisualStudio=true` in the titi-generated
 - **GIVEN** a project is built outside of a titi-generated solution
 - **WHEN** `AccelerateBuildsInVisualStudio` is evaluated
 - **THEN** its value comes from the repo's own `Directory.Build.props` default, which MAY be `false`
+
+### Requirement: MSBuild Locator Initialisation
+
+The system SHALL call `Microsoft.Build.Locator.RegisterDefaults()` before referencing any MSBuild type. If no valid MSBuild installation is found, the system SHALL emit E007 (MSBUILD_NOT_FOUND) and abort.
+
+#### Scenario: MSBuild located successfully
+- **GIVEN** a valid .NET SDK installation is present on the system
+- **WHEN** any MSBuild-dependent operation is initialised
+- **THEN** `RegisterDefaults()` completes without error and MSBuild types are available for use
+
+#### Scenario: No MSBuild installation found
+- **GIVEN** no valid MSBuild installation can be located by the Locator
+- **WHEN** any MSBuild-dependent operation is initialised
+- **THEN** E007 (MSBUILD_NOT_FOUND) is emitted with an actionable suggestion and the command exits with code 1
 
 ### Requirement: MSBuild Not Found Handling
 

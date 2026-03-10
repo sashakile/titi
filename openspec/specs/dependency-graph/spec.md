@@ -70,6 +70,11 @@ The system SHALL compute an `AffectedSet` from a set of changed files, identifyi
 - **WHEN** the affected set is computed
 - **THEN** that project appears in `TieredTestSet.unit`
 
+#### Scenario: Shallow git clone fallback
+- **GIVEN** the repository is a shallow git clone where the configured base commit is not available in the local history
+- **WHEN** affected-set computation is attempted
+- **THEN** the system emits a warning diagnostic explaining the base commit is unavailable, and returns an `AffectedSet` containing all discovered projects in `directlyAffected` as a full regression fallback
+
 ### Requirement: Cycle Detection
 
 The system SHALL detect dependency cycles during graph construction and populate `CycleReport` entries describing each cycle, the edges forming it, and a diagnostic message.
@@ -83,6 +88,20 @@ The system SHALL detect dependency cycles during graph construction and populate
 - **GIVEN** a graph with no circular references
 - **WHEN** the graph is built
 - **THEN** no `CycleReport` entries are produced
+
+### Requirement: AffectedSet and TieredTestSet Schemas
+
+The system SHALL define the `AffectedSet` schema with fields: `changedFiles` (string[]), `directlyAffected` (ProjectDescriptor[]), `transitivelyAffected` (ProjectDescriptor[]), and `affectedTests` (TieredTestSet). The system SHALL define the `TieredTestSet` schema with fields: `unit` (ProjectDescriptor[]), `package` (ProjectDescriptor[]), `integration` (ProjectDescriptor[]), and `compatibility` (ProjectDescriptor[]).
+
+#### Scenario: AffectedSet populated from changed files
+- **GIVEN** a set of changed source files spanning two projects
+- **WHEN** `titi affected` computes the affected set
+- **THEN** the returned `AffectedSet` has `changedFiles` listing every modified file path, `directlyAffected` listing the two projects whose source changed, `transitivelyAffected` listing all downstream dependents, and `affectedTests` partitioned into the appropriate `TieredTestSet` tiers
+
+#### Scenario: TieredTestSet populated by tier
+- **GIVEN** the affected set includes one unit test project and one integration test project
+- **WHEN** the `TieredTestSet` is constructed
+- **THEN** the unit test project appears in `TieredTestSet.unit` and the integration test project appears in `TieredTestSet.integration`, with `TieredTestSet.package` and `TieredTestSet.compatibility` empty
 
 ### Requirement: Graph Fingerprinting
 

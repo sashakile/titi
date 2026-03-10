@@ -33,6 +33,8 @@ The system SHALL represent each solution to generate as a `SolutionSpec` with `f
 - **WHEN** the solution is written
 - **THEN** the output file uses the legacy `.sln` text format
 
+> **Note:** `Microsoft.VisualStudio.SolutionPersistence` supports both `.sln` and `.slnx` serialization. For `.sln` output, `SolutionProjectEntry.projectGuid` must be populated with a valid project-type GUID. Legacy `.sln` support is lower priority than `.slnx` support.
+
 ### Requirement: Project Entry Metadata
 
 The system SHALL populate each `SolutionProjectEntry` with `path`, a deterministic `projectGuid`, `displayName`, and an optional `folderPath` for solution folder organisation.

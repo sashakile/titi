@@ -17,7 +17,7 @@ The system SHALL implement `titi open <project>` which generates a transient .sl
 
 #### Scenario: Unknown project
 - **WHEN** `titi open NonExistent.Project` is invoked
-- **THEN** the command exits with code 1 and emits E005 (NO_LOCAL_SOURCE)
+- **THEN** the command exits with code 1 and emits E001 (GRAPH_BUILD_FAILED)
 
 ### Requirement: titi affected
 
@@ -109,7 +109,7 @@ The system SHALL implement `titi pkg <add|remove|upgrade>` subcommands to manage
 
 ### Requirement: titi check
 
-The system SHALL implement `titi check <package>` which performs a Forward Flow compatibility check, evaluating whether the specified package version is compatible with all current consumers in the monorepo.
+The system SHALL implement `titi check <package>` which checks whether the specified package's current local source version is compatible with all consuming projects in the monorepo.
 
 #### Scenario: Compatible package
 - **GIVEN** all consumers of `Orion.Core` are compatible with its current version
@@ -135,6 +135,96 @@ The system SHALL implement `titi audit` which produces a transitive dependency a
 - **WHEN** `titi audit` is run
 - **THEN** exit code is 1 and the conflict is reported with owning projects and version ranges
 
+### Requirement: titi version detect
+
+The system SHALL implement `titi version detect [--dry-run] [--from <tag>] [--apply]` which runs the cascading bump algorithm over committed changesets, outputs a version plan showing each package's new version, and optionally writes the results to `version.json` files and `Directory.Packages.props`.
+
+#### Scenario: Dry run outputs plan without writing
+- **GIVEN** one or more changeset files are present in `.changesets/`
+- **WHEN** `titi version detect --dry-run` is invoked
+- **THEN** the computed version plan is printed to stdout and no files are modified; exit code is 0
+
+#### Scenario: Apply writes version files
+- **GIVEN** one or more changeset files are present in `.changesets/`
+- **WHEN** `titi version detect --apply` is invoked
+- **THEN** the version plan is applied by writing updated `version.json` files (via NBGV) for each affected package and updating `Directory.Packages.props` for CPM entries; exit code is 0
+
+#### Scenario: From tag scopes detection
+- **WHEN** `titi version detect --from v2.0.0` is invoked
+- **THEN** only changesets merged after the `v2.0.0` tag are considered when computing the version plan
+
+### Requirement: titi version validate
+
+The system SHALL implement `titi version validate [--fix]` which verifies that AssemblyVersion follows the `{Major}.0.0.0` pattern, CPM is enabled, lock files are present, `RestoreLockedMode` is configured for CI, and `global.json` is present with an SDK version pin. With `--fix`, auto-correctable violations are applied in place.
+
+#### Scenario: All checks pass
+- **GIVEN** a correctly configured monorepo
+- **WHEN** `titi version validate` is invoked
+- **THEN** exit code is 0 and a summary confirms all checks passed
+
+#### Scenario: Violations reported
+- **GIVEN** one project has an incorrect AssemblyVersion pattern and `global.json` is absent
+- **WHEN** `titi version validate` is invoked
+- **THEN** exit code is 1 and each violation is listed with its file location and a remediation hint
+
+#### Scenario: Fix applies safe corrections
+- **WHEN** `titi version validate --fix` is invoked with auto-correctable violations present
+- **THEN** safe fixes (e.g. correcting `AssemblyVersion` to `{Major}.0.0.0`) are written in place and non-auto-correctable violations are reported without modification
+
+### Requirement: titi bundle create
+
+The system SHALL implement `titi bundle create <name> --constituents LibA,LibB [--strategy independent|lockstep]` which scaffolds a metapackage `.csproj` referencing the specified constituent packages and registers the bundle in `bundles.yaml`.
+
+#### Scenario: Bundle scaffolded
+- **GIVEN** `titi bundle create Orion.Bundle --constituents Orion.Core,Orion.Data` is invoked
+- **WHEN** the command completes
+- **THEN** a metapackage `.csproj` for `Orion.Bundle` is created referencing `Orion.Core` and `Orion.Data` as constituents, an entry is written to `bundles.yaml`, and exit code is 0
+
+#### Scenario: Independent strategy recorded
+- **WHEN** `titi bundle create Orion.Bundle --constituents Orion.Core --strategy independent` is invoked
+- **THEN** the `bundles.yaml` entry for `Orion.Bundle` records `versionStrategy: independent`
+
+### Requirement: titi bundle check
+
+The system SHALL implement `titi bundle check <name>` which reports any version drift between the bundle's declared version and the versions of its constituent packages.
+
+#### Scenario: No drift
+- **GIVEN** all constituents of a bundle are at their expected versions
+- **WHEN** `titi bundle check Orion.Bundle` is invoked
+- **THEN** exit code is 0 and a message confirms the bundle is in sync
+
+#### Scenario: Drift detected
+- **GIVEN** one constituent has been bumped independently of the bundle
+- **WHEN** `titi bundle check Orion.Bundle` is invoked
+- **THEN** exit code is 1 and the drifted constituent is listed with its current and expected versions
+
+### Requirement: titi bundle update
+
+The system SHALL implement `titi bundle update <name> [--dry-run]` which updates the bundle's version to reflect its current constituent versions, optionally previewing changes without writing them.
+
+#### Scenario: Bundle version updated
+- **GIVEN** a bundle with out-of-date version relative to its constituents
+- **WHEN** `titi bundle update Orion.Bundle` is invoked
+- **THEN** the bundle's version is updated in `bundles.yaml` and the metapackage `.csproj`, and exit code is 0
+
+#### Scenario: Dry run previews without writing
+- **WHEN** `titi bundle update Orion.Bundle --dry-run` is invoked
+- **THEN** the proposed version update is printed and no files are modified; exit code is 0
+
+### Requirement: titi bundle lint
+
+The system SHALL implement `titi bundle lint [--all]` which scans bundle definitions for dual-reference anti-patterns (a consumer referencing both a bundle and one of its constituents directly) and stale bundles (constituents removed from the monorepo).
+
+#### Scenario: Dual-reference anti-pattern detected
+- **GIVEN** a consuming project references both `Orion.Bundle` and its constituent `Orion.Core` directly
+- **WHEN** `titi bundle lint` is invoked
+- **THEN** exit code is 1 and the dual-reference is reported with the consuming project name and the redundant constituent
+
+#### Scenario: Stale bundle detected
+- **GIVEN** a bundle references a constituent package that no longer exists in the monorepo
+- **WHEN** `titi bundle lint --all` is invoked
+- **THEN** the stale bundle entry is reported with the missing constituent name and exit code is 1
+
 ### Requirement: titi repl
 
 The system SHALL implement `titi repl` which launches an interactive build REPL allowing the user to explore the dependency graph, run queries, and inspect node properties.
@@ -147,6 +237,25 @@ The system SHALL implement `titi repl` which launches an interactive build REPL 
 - **GIVEN** the REPL is running
 - **WHEN** the user enters a query for a project's dependents
 - **THEN** the REPL prints the list of direct dependents for that project
+
+### Requirement: Global CLI Flags
+
+The system SHALL support the following global flags on the `titi` root command:
+- `titi --help`: prints a summary of all available commands and exits with code 0
+- `titi --version`: prints the current titi version string and exits with code 0
+- Every subcommand SHALL support `--help`, printing that subcommand's usage and exiting with code 0
+
+#### Scenario: Help flag exits cleanly
+- **WHEN** `titi --help` is invoked
+- **THEN** a command summary is printed to stdout and the process exits with code 0
+
+#### Scenario: Version flag prints version string
+- **WHEN** `titi --version` is invoked
+- **THEN** the titi version string (e.g. `titi 1.2.3`) is printed to stdout and the process exits with code 0
+
+#### Scenario: Subcommand help flag
+- **WHEN** `titi open --help` is invoked
+- **THEN** the usage description for `titi open` is printed to stdout and the process exits with code 0
 
 ### Requirement: Exit Codes
 

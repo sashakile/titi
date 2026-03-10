@@ -34,17 +34,17 @@ The system SHALL attempt to load `GraphCache` from `.titi/graph.cache` at the st
 
 ### Requirement: Subgraph Invalidation
 
-The system SHALL perform a partial (subgraph) re-evaluation when one or more .csproj files have changed fingerprints, updating only the affected nodes without discarding the entire cached graph.
+The system SHALL perform a partial (subgraph) re-evaluation when one or more .csproj files have changed fingerprints, updating only the affected nodes without discarding the entire cached graph. The re-evaluated subgraph consists of the changed node X AND all nodes that transitively depend on X (the downstream dependent cone); X's upstream dependencies are not re-evaluated unless they are also directly changed.
 
 #### Scenario: Single .csproj modified
 - **GIVEN** project X.csproj has a changed `lastModified` timestamp relative to its cached fingerprint
 - **WHEN** the cache is loaded
-- **THEN** only the subgraph rooted at X is re-evaluated; all other nodes are taken from the cache
+- **THEN** X and all nodes that transitively depend on X (the downstream dependent cone) are re-evaluated; upstream dependencies of X and unrelated nodes are taken from the cache unchanged
 
 #### Scenario: Multiple independent .csproj files modified
 - **GIVEN** two unrelated projects A.csproj and B.csproj have changed fingerprints
 - **WHEN** the cache is loaded
-- **THEN** both subgraphs are re-evaluated independently and the cache is updated
+- **THEN** both downstream dependent cones (A and its dependents; B and its dependents) are re-evaluated independently and the cache is updated
 
 ### Requirement: Full Cache Invalidation
 
@@ -73,6 +73,15 @@ The system SHALL reject a cached graph whose `schemaVersion` does not match the 
 - **GIVEN** the cache file has `schemaVersion = "1"` but the current titi binary expects `"2"`
 - **WHEN** the cache is loaded
 - **THEN** E006 is emitted and the graph is rebuilt from scratch
+
+### Requirement: Cache Write Failure Resilience
+
+The system SHALL degrade gracefully when the `.titi/` directory is not writable: a warn-level diagnostic is emitted and the command continues using the in-memory graph for the remainder of its execution without aborting.
+
+#### Scenario: Cache directory not writable
+- **GIVEN** the `.titi/` directory exists but the running process does not have write permission to it
+- **WHEN** any command attempts to write the graph cache
+- **THEN** the system emits a warn-level diagnostic indicating the cache could not be written, continues execution with the in-memory graph, and exits with the appropriate code for the command's logical outcome (not code 1 solely due to the write failure)
 
 ### Requirement: Cache Warm Command
 

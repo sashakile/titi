@@ -37,6 +37,8 @@ The system SHALL parse the `TitiConfig` root with required fields `prefix` (stri
 
 The system SHALL read a `CacheConfig` sub-section specifying `enabled` (boolean), `directory` (default `.titi/`), `maxAge` (duration), and `globalTriggers` (list of file paths that force full graph invalidation, defaulting to `["Directory.Build.props", "Directory.Build.targets", "Directory.Packages.props"]`).
 
+> **Note:** `cache.directory` is the root artifact directory for ALL titi-generated files — including `graph.cache`, `solutions/`, `manifests/`, and `logs/` — not merely the location of the cache file itself.
+
 #### Scenario: Cache disabled
 - **GIVEN** `cache.enabled = false`
 - **WHEN** any command requiring the graph runs
@@ -49,7 +51,11 @@ The system SHALL read a `CacheConfig` sub-section specifying `enabled` (boolean)
 
 ### Requirement: Test Tier Configuration
 
-The system SHALL read a `TestTierConfig` defining glob patterns for `unit`, `package`, `integration`, and `compatibility` test project tiers, plus a `defaultTier` for projects that match no pattern.
+The system SHALL read a `TestTierConfig` defining glob patterns for `unit`, `package`, `integration`, and `compatibility` test project tiers, plus a `defaultTier` for projects that match no pattern. The tiers are defined as:
+- **unit**: isolated tests with no external dependencies
+- **package**: tests for a library as consumers would use it (contract/package-level integration)
+- **integration**: tests crossing service or domain boundaries
+- **compatibility**: tests verifying a new version against existing consumers
 
 #### Scenario: Project matches unit glob
 - **GIVEN** `testTiers.unit = ["**/*.UnitTests.csproj"]`
@@ -63,7 +69,7 @@ The system SHALL read a `TestTierConfig` defining glob patterns for `unit`, `pac
 
 ### Requirement: IDE Configuration
 
-The system SHALL read an `IdeConfig` with `launchCommand` (executable path), `args` (argument template), and `autoOpen` (boolean) to control how `titi open` launches the IDE.
+The system SHALL read an `IdeConfig` with `launchCommand` (executable path), `args` (argument template), and `autoOpen` (boolean) to control how `titi open` launches the IDE. The placeholder `{solution_path}` in `ide.args` is substituted with the absolute path of the generated `.slnx` file before the argument string is passed to the launch command.
 
 #### Scenario: IDE auto-open enabled
 - **GIVEN** `ide.autoOpen = true` and `ide.launchCommand = "rider"`
