@@ -84,6 +84,15 @@ The system SHALL accept a local source project as a valid swap target when `vers
 - **WHEN** versionPolicy=SEMVER_COMPATIBLE
 - **THEN** the swap succeeds
 
+### Requirement: Transitive Floor Management
+
+The system SHALL ensure that when a `PackageReference` is swapped for a `ProjectReference` (via `ExcludeAssets="All"`), any transitive floor versions established by the original NuGet package are respected by the `ProjectReference`. If the local project's version is lower than a required transitive floor from another path in the graph, the swap SHALL be downgraded to `BINARY` or reported as a conflict.
+
+#### Scenario: Transitive floor higher than local source
+- **GIVEN** project A depends on Orion.Core (source) and Orion.Data (binary)
+- **WHEN** Orion.Data (binary) requires Orion.Core >= 2.0.0, but local Orion.Core source is 1.9.0
+- **THEN** the swap for Orion.Core is reverted to BINARY mode (or retained with VERSION_MISMATCH) to satisfy the higher floor from the binary path
+
 #### Scenario: Major mismatch rejected under SEMVER_COMPATIBLE
 - **GIVEN** package requires `>= 2.0.0` and local source is `3.0.0`
 - **WHEN** versionPolicy=SEMVER_COMPATIBLE

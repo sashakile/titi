@@ -89,3 +89,17 @@ The system SHALL detect when `dotnet` is not available on PATH before invoking a
 - **GIVEN** the `dotnet` executable is not found in any PATH entry
 - **WHEN** a command requiring MSBuild evaluation is invoked
 - **THEN** the system emits E007 with a suggestion to install the .NET SDK, and exits with code 1
+
+### Requirement: ClojureCLR Compilation
+
+The titi CLI project SHALL use the `ClojureCLR.Next.SDK` MSBuild tasks to compile `.clj` source files. Source files under `src/` SHALL be included as `EmbeddedResource` items to enable runtime loading, and SHALL be AOT-compiled into the assembly when `<ClojureAOT>true</ClojureAOT>` is set in the `.csproj`.
+
+#### Scenario: Source files as EmbeddedResource
+- **GIVEN** a `.clj` file in `src/titi/`
+- **WHEN** the project is built
+- **THEN** the file is included in the output assembly as an `EmbeddedResource` named according to its namespace
+
+#### Scenario: AOT Compilation enabled
+- **GIVEN** `<ClojureAOT>true</ClojureAOT>` is set in `titi.csproj`
+- **WHEN** `dotnet build` is run
+- **THEN** the Clojure compiler is invoked during the MSBuild `CoreCompile` phase to produce `.dll` or `.class` equivalents in the assembly
