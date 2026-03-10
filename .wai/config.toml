@@ -1,0 +1,9 @@
+plugins = []
+
+[project]
+name = "titi"
+version = "2026.3.2"
+description = ""
+tool_commit = "e6bd7eb"
+
+[llm]
