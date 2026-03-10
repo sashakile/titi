@@ -1,0 +1,66 @@
+# titi
+
+> Small CLI tool for managing C# monorepos.
+
+## What it does
+
+titi is a ClojureCLR-based command-line tool that provides an orchestration
+layer for .NET monorepos. It manages the tension between treating a module as
+an independent NuGet package vs. a local project reference.
+
+## Core capabilities
+
+- **Reference swapping** — toggle between `PackageReference` (binary mode) and
+  `ProjectReference` (source mode) using MSBuild conditional logic
+- **Dependency graph analysis** — uses `Microsoft.Build.Graph` to build a DAG
+  of the entire monorepo and identify affected projects
+- **Dynamic solution generation** — creates transient `.slnx` files scoped to
+  a target project and its transitive source-dependencies
+- **Versioning** — cascading version bump detection gated on API surface
+  changes; integrates with Nerdbank.GitVersioning
+- **Central Package Management** — enforces CPM via `Directory.Packages.props`
+  with transitive pinning and lock-file regeneration
+- **Bundle management** — metapackage scaffolding, drift detection, lint rules
+- **Test Impact Analysis** — generates `Microsoft.Build.Traversal` projects for
+  only the tests affected by a change set
+
+## Implementation
+
+Written in ClojureCLR (targeting ClojureCLR.Next). Uses .NET interop to call
+MSBuild, SolutionPersistence, and ApiCompat APIs directly. Distributed as an
+AOT-compiled executable.
+
+## Key design decisions
+
+- Functional-core / imperative-shell: graph analysis and transformation are
+  pure functions; filesystem I/O and MSBuild calls are in the shell layer
+- Projects stay "clean" by default (PackageReference only); ProjectReference
+  mode is only active when the tool generates a custom solution
+- `AssemblyVersion` is pinned to `{Major}.0.0.0` to prevent runtime binding
+  failures across patches
+- Lock files (`packages.lock.json`) are required and enforced in CI via
+  `RestoreLockedMode`
+
+## Project structure (planned)
+
+```
+src/
+  titi/
+    core.clj          — entry point, CLI dispatch
+    graph.clj         — ProjectGraph analysis
+    swap.clj          — PackageReference ↔ ProjectReference logic
+    solution.clj      — .slnx generation via SolutionPersistence
+    version.clj       — cascading version bump detection
+    bundle.clj        — metapackage management
+    ci.clj            — Traversal project generation
+test/
+  titi/
+    graph_test.clj
+    swap_test.clj
+```
+
+## See also
+
+- Research plan: `Monorepo CLI Tool Research Plan.md`
+- Versioning design: `nuget-versioning-titi-revised.md`
+- Architecture: `titi-architecture-schemas.docx`

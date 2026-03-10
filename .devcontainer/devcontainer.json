@@ -1,0 +1,21 @@
+{
+  "name": "titi",
+  "image": "mcr.microsoft.com/dotnet/sdk:10.0",
+  "features": {
+    "ghcr.io/devcontainers/features/common-utils:2": {},
+    "ghcr.io/devcontainers/features/git:1": {},
+    "ghcr.io/devcontainers/features/github-cli:1": {}
+  },
+  "postCreateCommand": "brew install just prek 2>/dev/null; prek install-hooks 2>/dev/null || true",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-dotnettools.csdevkit",
+        "EditorConfig.EditorConfig"
+      ]
+    }
+  },
+  "remoteEnv": {
+    "CI": "true"
+  }
+}

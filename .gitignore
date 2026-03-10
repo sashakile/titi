@@ -12,7 +12,7 @@ packages/
 *.snupkg
 project.assets.json
 project.nuget.cache
-packages.lock.json
+# packages.lock.json is intentionally committed — required for RestoreLockedMode in CI
 
 # MSBuild
 *.binlog
