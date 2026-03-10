@@ -91,17 +91,30 @@ The system SHALL require that all projects in the monorepo set `AssemblyVersion`
 
 ### Requirement: Cascading Bump Algorithm
 
-The system SHALL implement a cascading version bump algorithm that: builds the dependency graph, identifies changed packages, determines the bump type (patch/minor/major) per package using ApiCompat, topologically propagates the bump only where the API surface has changed, and applies the highest bump type when multiple propagation paths converge.
+The system SHALL implement a cascading version bump algorithm that: builds the dependency graph, identifies changed packages, determines the bump type (patch/minor/major) per package using `Microsoft.DotNet.ApiCompat`, topologically propagates the bump only where the API surface has changed, and applies the highest bump type when multiple propagation paths converge.
 
-#### Scenario: Patch bump does not propagate
-- **GIVEN** package A has a patch-only change (no API surface change)
-- **WHEN** the cascading bump runs
-- **THEN** downstream packages of A are not bumped
+The algorithm proceeds as follows:
+1. For each changed package, run `Microsoft.DotNet.ApiCompat.Tool` comparing the baseline (last published) assembly against the locally built assembly to determine whether the public API surface has changed.
+2. If ApiCompat reports no public API differences, the change is internal-only — the package receives the bump from its changeset but does **not** propagate to dependents.
+3. If ApiCompat reports additive-only changes (new public types/members), propagate a **minor** bump to direct dependents.
+4. If ApiCompat reports breaking changes (removed/changed public types/members), propagate a **major** bump to direct dependents.
+5. Propagation continues topologically: each dependent is re-evaluated via ApiCompat only if it received a propagated bump. If the dependent's own public API is unchanged by the new version of its dependency, propagation stops at that node.
+6. When multiple propagation paths converge on a single package, the highest bump type wins.
 
-#### Scenario: Minor bump propagates through chain
-- **GIVEN** package A has a minor (additive API) change and B depends on A
+#### Scenario: Internal-only patch does not propagate
+- **GIVEN** package A has a patch changeset and ApiCompat confirms no public API surface change between the baseline and current build
 - **WHEN** the cascading bump runs
-- **THEN** B receives a minor bump
+- **THEN** A receives a patch bump; downstream packages of A are **not** bumped because A's public API is unchanged
+
+#### Scenario: Minor API addition propagates through chain
+- **GIVEN** package A has a minor changeset, ApiCompat reports additive-only public API changes, and B depends on A
+- **WHEN** the cascading bump runs
+- **THEN** A receives a minor bump and B receives a minor bump (because A's public API changed)
+
+#### Scenario: Propagation stops when dependent API is unchanged
+- **GIVEN** package A has a minor bump that propagates to B, but B's own public API surface is unchanged (ApiCompat reports no differences for B)
+- **WHEN** the cascading bump runs
+- **THEN** A receives a minor bump, B receives a minor bump, but C (which depends on B) is **not** bumped
 
 #### Scenario: Highest bump wins at convergence
 - **GIVEN** package C is reached via two paths: one requiring patch and one requiring minor
@@ -179,4 +192,4 @@ The system SHALL support bundle (metapackage) definitions via `bundles.yaml` at 
 #### Scenario: Bundle independent versioning
 - **GIVEN** a bundle with `versionStrategy: independent` in `bundles.yaml`
 - **WHEN** the cascading bump runs
-- **THEN** the bundle's version is determined solely by consumer-facing impact, not by internal constituent bumps
+- **THEN** the bundle's version is bumped only if a constituent's public API surface changed (as detected by ApiCompat on the bundle's own public API); internal-only bumps within constituents do not cascade to the bundle. The bundle has its own changeset files to control explicit version bumps independent of constituent changes.

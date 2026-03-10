@@ -23,7 +23,7 @@ jobs:
         # RestoreLockedMode is enabled by Directory.Build.props when CI=true
         # Skip if no projects exist yet
         run: |
-          if find . -name "*.csproj" -not -path "*/.wai/*" | grep -q .; then
+          if find src test -maxdepth 3 -name "*.csproj" 2>/dev/null | grep -q .; then
             dotnet restore
           else
             echo "No .csproj files found, skipping restore"
@@ -33,7 +33,7 @@ jobs:
 
       - name: Build
         run: |
-          if find . -name "*.csproj" -not -path "*/.wai/*" | grep -q .; then
+          if find src test -maxdepth 3 -name "*.csproj" 2>/dev/null | grep -q .; then
             dotnet build --no-restore --configuration Release
           else
             echo "No .csproj files found, skipping build"
@@ -41,7 +41,7 @@ jobs:
 
       - name: Test
         run: |
-          if find . -name "*.csproj" -not -path "*/.wai/*" | grep -q .; then
+          if find src test -maxdepth 3 -name "*.csproj" 2>/dev/null | grep -q .; then
             dotnet test --no-build --configuration Release --collect:"XPlat Code Coverage"
           else
             echo "No .csproj files found, skipping test"

@@ -61,6 +61,7 @@ test/
 
 ## See also
 
-- Research plan: `Monorepo CLI Tool Research Plan.md`
-- Versioning design: `nuget-versioning-titi-revised.md`
-- Architecture: `titi-architecture-schemas.docx`
+- Research plan: `.wai/projects/tracer-bullet/research/` (architectural analysis and versioning research)
+- Design decisions: `.wai/projects/tracer-bullet/design/` (tracer-bullet architecture decisions)
+- Implementation plan: `.wai/projects/tracer-bullet/plan/` (phased implementation plan)
+- Specifications: `openspec/specs/` (10 capability specs)

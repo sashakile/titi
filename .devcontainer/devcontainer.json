@@ -6,7 +6,7 @@
     "ghcr.io/devcontainers/features/git:1": {},
     "ghcr.io/devcontainers/features/github-cli:1": {}
   },
-  "postCreateCommand": "brew install just prek 2>/dev/null; prek install-hooks 2>/dev/null || true",
+  "postCreateCommand": "curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to /usr/local/bin 2>/dev/null || apt-get update && apt-get install -y just 2>/dev/null || true; prek install-hooks 2>/dev/null || true",
   "customizations": {
     "vscode": {
       "extensions": [

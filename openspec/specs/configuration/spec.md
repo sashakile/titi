@@ -17,11 +17,11 @@ The system SHALL locate `titi.config.edn` by walking up from the current working
 
 #### Scenario: No config file found
 - **WHEN** no `titi.config.edn` exists anywhere in the directory ancestry
-- **THEN** the system emits error E009 (CONFIG_INVALID) with a suggestion to run `titi init`
+- **THEN** the system applies built-in defaults (versionPolicy=SEMVER_COMPATIBLE, cache.enabled=true, cache.directory=".titi/") and emits a warn-level diagnostic suggesting the user run `titi init` to create an explicit config file
 
 ### Requirement: Core Configuration Fields
 
-The system SHALL parse the `TitiConfig` root with required fields `prefix` (string, e.g. `"Orion."`), `sourceRoot` (path relative to repo root), and `versionPolicy` (STRICT | SEMVER_COMPATIBLE | FORCE), and treat all other fields as optional with documented defaults.
+The system SHALL parse the `TitiConfig` root with required fields `prefix` (string, e.g. `"Orion."`), `sourceRoot` (path relative to repo root), and `versionPolicy` (STRICT | SEMVER_COMPATIBLE | FORCE, default: SEMVER_COMPATIBLE), and treat all other fields as optional with documented defaults.
 
 #### Scenario: Valid minimal config
 - **GIVEN** a config file with only `prefix`, `sourceRoot`, and `versionPolicy`

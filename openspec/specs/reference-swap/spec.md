@@ -88,10 +88,15 @@ The system SHALL accept a local source project as a valid swap target when `vers
 
 The system SHALL ensure that when a `PackageReference` is swapped for a `ProjectReference` (via `ExcludeAssets="All"`), any transitive floor versions established by the original NuGet package are respected by the `ProjectReference`. If the local project's version is lower than a required transitive floor from another path in the graph, the swap SHALL be downgraded to `BINARY` or reported as a conflict.
 
-#### Scenario: Transitive floor higher than local source
-- **GIVEN** project A depends on Orion.Core (source) and Orion.Data (binary)
-- **WHEN** Orion.Data (binary) requires Orion.Core >= 2.0.0, but local Orion.Core source is 1.9.0
-- **THEN** the swap for Orion.Core is reverted to BINARY mode (or retained with VERSION_MISMATCH) to satisfy the higher floor from the binary path
+#### Scenario: Transitive floor higher than local source — pre-swap validation
+- **GIVEN** project A depends on Orion.Core (source candidate) and Orion.Data (binary), and Orion.Data requires Orion.Core >= 2.0.0, but local Orion.Core source is 1.9.0
+- **WHEN** the swap for Orion.Core is evaluated
+- **THEN** the swap is rejected before any modification occurs: Orion.Core is placed in `SwapResult.retained` with `RetainedReason.VERSION_MISMATCH` and a diagnostic noting the unsatisfied transitive floor (>= 2.0.0 required, 1.9.0 available)
+
+#### Scenario: Transitive floor satisfied — swap proceeds
+- **GIVEN** project A depends on Orion.Core (source candidate) and Orion.Data (binary), and Orion.Data requires Orion.Core >= 2.0.0, and local Orion.Core source is 2.1.0
+- **WHEN** the swap for Orion.Core is evaluated
+- **THEN** the swap proceeds: Orion.Core appears in `SwapResult.swapped` with `ExcludeAssets="All"` on the retained PackageReference
 
 #### Scenario: Major mismatch rejected under SEMVER_COMPATIBLE
 - **GIVEN** package requires `>= 2.0.0` and local source is `3.0.0`

@@ -19,7 +19,7 @@ pack:
 # Clean build artifacts
 clean:
     dotnet clean
-    find . \( -name "bin" -o -name "obj" \) -print0 | xargs -r0 rm -rf
+    find src test -maxdepth 3 \( -name "bin" -o -name "obj" \) -print0 2>/dev/null | xargs -r0 rm -rf
 
 # Restore dependencies
 restore:

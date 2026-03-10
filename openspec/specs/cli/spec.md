@@ -63,7 +63,7 @@ The system SHALL implement `titi cache warm` which pre-builds and persists the f
 
 ### Requirement: titi build-manifest
 
-The system SHALL implement `titi build-manifest` which generates a Traversal .proj XML file listing all projects in the affected change set with their `reason` and `tier`, suitable for `dotnet build` or `dotnet msbuild`.
+The system SHALL implement `titi build-manifest` which generates a Traversal .proj XML file listing all projects in the affected change set with their `reason` and `tier`, suitable for `dotnet build` or `dotnet msbuild`. This command internally uses the same affected-set computation as `titi affected` but produces a build-ready Traversal project rather than a list of paths.
 
 #### Scenario: Manifest generated
 - **GIVEN** an affected set with directly affected and transitive projects
@@ -84,8 +84,8 @@ The system SHALL implement `titi test-manifest` which generates a Traversal .pro
 - **THEN** a Traversal .proj is emitted containing all affected test projects, and exit code is 0
 
 #### Scenario: Tier filter flag
-- **WHEN** `titi test-manifest --tier unit` is invoked
-- **THEN** only unit-tier test projects are included in the manifest
+- **WHEN** `titi test-manifest --tier unit` is invoked (valid values: `unit`, `package`, `integration`, `compatibility`)
+- **THEN** only test projects matching the specified tier are included in the manifest
 
 ### Requirement: titi pkg
 
