@@ -6,7 +6,7 @@ The solution generation capability creates transient .slnx solution files scoped
 
 ## Requirements
 
-### Requirement: Transient Solution File Creation
+### Requirement SG-01: Transient Solution File Creation
 
 The system SHALL generate a `.slnx` solution file using the `Microsoft.VisualStudio.SolutionPersistence` library, writing the output to `.titi/solutions/<name>.slnx`, and the file MUST be listed in `.gitignore`.
 
@@ -20,7 +20,7 @@ The system SHALL generate a `.slnx` solution file using the `Microsoft.VisualStu
 - **WHEN** the `.titi/` directory is inspected
 - **THEN** `.gitignore` (or the repo root `.gitignore`) contains an entry excluding `.titi/`
 
-### Requirement: Solution Spec Model
+### Requirement SG-02: Solution Spec Model
 
 The system SHALL represent each solution to generate as a `SolutionSpec` with `format` (`"slnx"` | `"sln"`), `outputPath`, a list of `SolutionProjectEntry` items, virtual `folders`, and `globalProperties`.
 
@@ -35,7 +35,7 @@ The system SHALL represent each solution to generate as a `SolutionSpec` with `f
 
 > **Note:** `Microsoft.VisualStudio.SolutionPersistence` supports both `.sln` and `.slnx` serialization. For `.sln` output, `SolutionProjectEntry.projectGuid` must be populated with a valid project-type GUID. Legacy `.sln` support is lower priority than `.slnx` support.
 
-### Requirement: Project Entry Metadata
+### Requirement SG-03: Project Entry Metadata
 
 The system SHALL populate each `SolutionProjectEntry` with `path`, a deterministic `projectGuid`, `displayName`, and an optional `folderPath` for solution folder organisation.
 
@@ -48,7 +48,7 @@ The system SHALL populate each `SolutionProjectEntry` with `path`, a determinist
 - **WHEN** the solution is regenerated
 - **THEN** the `projectGuid` for that entry is identical across regenerations
 
-### Requirement: Global Properties Injection
+### Requirement SG-04: Global Properties Injection
 
 The system SHALL write `globalProperties` from `SolutionSpec` into the generated solution so that `InTitiContext`, `TitiPrefix`, and `TitiSourceRoot` are set for all builds initiated from the transient solution.
 
@@ -56,7 +56,7 @@ The system SHALL write `globalProperties` from `SolutionSpec` into the generated
 - **WHEN** a transient solution is written
 - **THEN** the solution file includes `InTitiContext=true`, `TitiPrefix`, and `TitiSourceRoot` at the solution global-properties level
 
-### Requirement: Idempotent Regeneration
+### Requirement SG-05: Idempotent Regeneration
 
 The system SHALL regenerate an existing transient solution file if the dependency closure or swap state has changed since the file was last written, and leave it unchanged if nothing has changed.
 
@@ -70,7 +70,7 @@ The system SHALL regenerate an existing transient solution file if the dependenc
 - **WHEN** `titi open P` is run again
 - **THEN** the solution file's modification timestamp is not updated
 
-### Requirement: Solution Cleanup
+### Requirement SG-06: Solution Cleanup
 
 The system SHALL remove all files under `.titi/solutions/` when `titi clean` is invoked.
 

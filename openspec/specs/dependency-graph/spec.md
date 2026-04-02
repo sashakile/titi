@@ -6,7 +6,7 @@ The dependency graph capability builds and queries a full in-memory model of the
 
 ## Requirements
 
-### Requirement: Graph Construction
+### Requirement DG-01: Graph Construction
 
 The system SHALL construct a `MonorepoGraph` by scanning all .csproj files under `repoRoot`, resolving package and project references, and producing a map of `GraphNode` entries keyed by canonical project path.
 
@@ -19,7 +19,7 @@ The system SHALL construct a `MonorepoGraph` by scanning all .csproj files under
 - **WHEN** graph construction is attempted in a directory with no `.git` root
 - **THEN** the system emits error E008 (GIT_NOT_AVAILABLE)
 
-### Requirement: Topological Order
+### Requirement DG-02: Topological Order
 
 The system SHALL compute a stable topological sort of all `GraphNode` entries and store it as `MonorepoGraph.topologicalOrder`, such that every project appears after all its dependencies.
 
@@ -33,7 +33,7 @@ The system SHALL compute a stable topological sort of all `GraphNode` entries an
 - **WHEN** the graph is sorted
 - **THEN** D appears before both B and C, which appear before A
 
-### Requirement: Graph Node Depth
+### Requirement DG-03: Graph Node Depth
 
 The system SHALL assign each `GraphNode` a `depth` value equal to the length of the longest dependency path from that node to a leaf (zero for projects with no dependencies).
 
@@ -47,7 +47,7 @@ The system SHALL assign each `GraphNode` a `depth` value equal to the length of 
 - **WHEN** the graph is built
 - **THEN** B has depth 1 and A has depth 2
 
-### Requirement: Affected Set Computation
+### Requirement DG-04: Affected Set Computation
 
 The system SHALL compute an `AffectedSet` from a set of changed files, identifying projects directly affected (own source changed) and transitively affected (depend on a directly affected project), and partitioning affected test projects into a `TieredTestSet`.
 
@@ -75,7 +75,7 @@ The system SHALL compute an `AffectedSet` from a set of changed files, identifyi
 - **WHEN** affected-set computation is attempted
 - **THEN** the system emits a warning diagnostic explaining the base commit is unavailable, and returns an `AffectedSet` containing all discovered projects in `directlyAffected` as a full regression fallback
 
-### Requirement: Cycle Detection
+### Requirement DG-05: Cycle Detection
 
 The system SHALL detect dependency cycles during graph construction and populate `CycleReport` entries describing each cycle, the edges forming it, and a diagnostic message.
 
@@ -89,7 +89,7 @@ The system SHALL detect dependency cycles during graph construction and populate
 - **WHEN** the graph is built
 - **THEN** no `CycleReport` entries are produced
 
-### Requirement: AffectedSet and TieredTestSet Schemas
+### Requirement DG-06: AffectedSet and TieredTestSet Schemas
 
 The system SHALL define the `AffectedSet` schema with fields: `changedFiles` (string[]), `directlyAffected` (ProjectDescriptor[]), `transitivelyAffected` (ProjectDescriptor[]), and `affectedTests` (TieredTestSet). The system SHALL define the `TieredTestSet` schema with fields: `unit` (ProjectDescriptor[]), `package` (ProjectDescriptor[]), `integration` (ProjectDescriptor[]), and `compatibility` (ProjectDescriptor[]).
 
@@ -103,10 +103,43 @@ The system SHALL define the `AffectedSet` schema with fields: `changedFiles` (st
 - **WHEN** the `TieredTestSet` is constructed
 - **THEN** the unit test project appears in `TieredTestSet.unit` and the integration test project appears in `TieredTestSet.integration`, with `TieredTestSet.package` and `TieredTestSet.compatibility` empty
 
-### Requirement: Graph Fingerprinting
+### Requirement DG-07: Graph Fingerprinting
 
 The system SHALL record a `FileFingerprint` (path, lastModified, sizeBytes, optional SHA-256 contentHash) for each .csproj and for global build files, storing them in `MonorepoGraph.fingerprints`.
 
 #### Scenario: Fingerprint capture
 - **WHEN** the graph is built
 - **THEN** each .csproj under repoRoot has a corresponding fingerprint entry with at minimum path and lastModified populated
+
+### Requirement DG-08: Graph Performance
+
+The system SHALL meet the following performance targets on commodity hardware (4-core CPU, 16 GB RAM, SSD):
+- Graph construction from scratch SHALL complete within 30 seconds for a monorepo containing up to 1000 .csproj files.
+- Affected-set computation from a warm graph SHALL complete within 2 seconds for a monorepo containing up to 1000 .csproj files.
+- Topological sort SHALL complete within 1 second for graphs up to 1000 nodes.
+
+> **Note:** These are order-of-magnitude targets for CI and developer-experience planning. Actual thresholds may be revised after benchmarking the reference implementation.
+
+#### Scenario: Large repo graph construction
+- **GIVEN** a monorepo with 800 .csproj files and typical inter-project dependency density
+- **WHEN** the graph is constructed from scratch (cold cache)
+- **THEN** construction completes in under 30 seconds
+
+#### Scenario: Affected-set on warm graph
+- **GIVEN** a warm graph cache for a 500-project monorepo and 10 changed files
+- **WHEN** `titi affected` is run
+- **THEN** the affected set is computed and printed in under 2 seconds
+
+### Requirement DG-09: Single-Writer Concurrency
+
+The system SHALL assume single-writer access to the `.titi/` directory. If a titi command detects that another titi process is actively writing to `.titi/graph.cache` (e.g. via a lock file), it SHALL wait up to 10 seconds for the lock to release, then emit a warn-level diagnostic and proceed with a fresh in-memory graph build rather than reading a partially written cache.
+
+#### Scenario: Concurrent titi invocation
+- **GIVEN** one `titi cache warm` process is writing to `.titi/graph.cache`
+- **WHEN** a second `titi affected` process starts and detects the lock
+- **THEN** the second process waits up to 10 seconds; if the lock is released, it reads the cache normally; if not, it emits a warning and builds the graph from scratch
+
+#### Scenario: Stale lock file
+- **GIVEN** a `.titi/graph.cache.lock` file exists but the owning process is no longer running
+- **WHEN** a titi command starts
+- **THEN** the system detects the stale lock (e.g. via PID check), removes it, and proceeds normally with a diagnostic note

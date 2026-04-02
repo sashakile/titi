@@ -4,9 +4,20 @@
 
 The titi domain model defines the core data types used throughout the tool for describing projects, packages, versions, and inter-project relationships.
 
+## Terminology
+
+The following terms have precise meanings throughout all titi specifications:
+
+- **project**: a local `.csproj` file in the monorepo, represented by a `ProjectDescriptor`
+- **package**: a NuGet binary artifact resolved from a feed, referenced via `PackageReference`
+- **packable project**: a local project with `isPackable=true` that produces a NuGet package when packed
+- **package ID**: the NuGet identity string (e.g. `Orion.Core`) — shared between a packable project and the package it produces
+- **source reference**: a `ProjectReference` pointing to a local project (see `ReferenceMode.SOURCE`)
+- **binary reference**: a `PackageReference` resolved from a NuGet feed (see `ReferenceMode.BINARY`)
+
 ## Requirements
 
-### Requirement: Project Descriptor
+### Requirement DM-01: Project Descriptor
 
 The system SHALL represent each .NET project as a `ProjectDescriptor` containing its path, package identity, version, target frameworks, packability flag, test project flag, package references, project references, and arbitrary MSBuild properties.
 
@@ -20,7 +31,7 @@ The system SHALL represent each .NET project as a `ProjectDescriptor` containing
 - **WHEN** the project is parsed
 - **THEN** packageId and version are absent or empty, and `isPackable` is false
 
-### Requirement: Semantic Version
+### Requirement DM-02: Semantic Version
 
 The system SHALL represent version strings as a structured `SemanticVersion` with `major`, `minor`, `patch`, integer fields plus optional `prerelease` and `metadata` string components.
 
@@ -36,7 +47,7 @@ The system SHALL represent version strings as a structured `SemanticVersion` wit
 - **WHEN** a non-SemVer string such as `"latest"` is parsed
 - **THEN** the system raises a structured error with code E009
 
-### Requirement: Target Framework Moniker
+### Requirement DM-03: Target Framework Moniker
 
 The system SHALL represent each target framework as a `TFM` with a `moniker` string (e.g. `"net9.0"`), a `framework` identifier, and a `version` component.
 
@@ -49,7 +60,7 @@ The system SHALL represent each target framework as a `TFM` with a `moniker` str
 - **WHEN** its TFMs are collected
 - **THEN** the descriptor holds two `TFM` entries
 
-### Requirement: Package Reference
+### Requirement DM-04: Package Reference
 
 The system SHALL represent each NuGet package reference as a `PackageRef` with `packageId`, `versionRange`, and optional `privateAssets` and `excludeAssets` attributes.
 
@@ -61,7 +72,7 @@ The system SHALL represent each NuGet package reference as a `PackageRef` with `
 - **WHEN** a `PackageReference` with `PrivateAssets="All"` is parsed
 - **THEN** privateAssets is `"All"` on the resulting `PackageRef`
 
-### Requirement: Project Reference
+### Requirement DM-05: Project Reference
 
 The system SHALL represent each project-to-project dependency as a `ProjectRef` with the referenced project's `path` and an `isTransitive` flag.
 
@@ -73,7 +84,7 @@ The system SHALL represent each project-to-project dependency as a `ProjectRef` 
 - **WHEN** a project reference is marked as transitive by the graph engine
 - **THEN** isTransitive is true on the resulting `ProjectRef`
 
-### Requirement: Reference Mode
+### Requirement DM-06: Reference Mode
 
 The system SHALL define a `ReferenceMode` enumeration with values `SOURCE`, `BINARY`, and `SUPPRESSED` to indicate how a dependency edge is currently resolved.
 

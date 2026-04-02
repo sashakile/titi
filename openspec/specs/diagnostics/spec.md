@@ -6,9 +6,9 @@ The diagnostics capability defines how titi surfaces errors, warnings, and struc
 
 ## Requirements
 
-### Requirement: Structured Error Model
+### Requirement DX-01: Structured Error Model
 
-The system SHALL represent every user-facing error as a `TitiError` with a unique `ErrorCode`, a human-readable `message`, a `context` block (command, target, phase), and a `suggestions` list of actionable remediation steps. Valid values for the `phase` field are: `config-load`, `graph-build`, `cache-load`, `swap`, `solution-gen`, `manifest-gen`, `build`, `test`.
+The system SHALL represent every user-facing error as a `TitiError` with a unique `ErrorCode`, a human-readable `message`, a `context` block (command, target, phase), and a `suggestions` list of actionable remediation steps. Valid values for the `phase` field are: `config-load`, `graph-build`, `cache-load`, `swap`, `solution-gen`, `manifest-gen`, `version-detect`, `build`, `test`.
 
 #### Scenario: Error includes suggestions
 - **GIVEN** error E007 (MSBUILD_NOT_FOUND) is raised
@@ -20,9 +20,9 @@ The system SHALL represent every user-facing error as a `TitiError` with a uniqu
 - **WHEN** the error is displayed
 - **THEN** the context block contains command="open", target=the affected package ID, and phase="swap"
 
-### Requirement: Error Code Taxonomy
+### Requirement DX-02: Error Code Taxonomy
 
-The system SHALL define and document the following error codes: E001 GRAPH_BUILD_FAILED, E002 CYCLE_DETECTED, E003 VERSION_MISMATCH, E004 TFM_INCOMPATIBLE, E005 NO_LOCAL_SOURCE, E006 CACHE_CORRUPT, E007 MSBUILD_NOT_FOUND, E008 GIT_NOT_AVAILABLE, E009 CONFIG_INVALID, E010 BUILD_FAILED, E011 TEST_FAILED. Additional error codes SHALL NOT be added without a corresponding spec update to this taxonomy.
+The system SHALL define and document the following error codes: E001 GRAPH_BUILD_FAILED, E002 CYCLE_DETECTED, E003 VERSION_MISMATCH, E004 TFM_INCOMPATIBLE, E005 NO_LOCAL_SOURCE, E006 CACHE_CORRUPT, E007 MSBUILD_NOT_FOUND, E008 GIT_NOT_AVAILABLE, E009 CONFIG_INVALID, E010 BUILD_FAILED, E011 TEST_FAILED, E012 APICOMPAT_NOT_AVAILABLE. Additional error codes SHALL NOT be added without a corresponding spec update to this taxonomy.
 
 #### Scenario: Known error code emitted
 - **WHEN** the graph build fails due to a malformed .csproj
@@ -32,7 +32,11 @@ The system SHALL define and document the following error codes: E001 GRAPH_BUILD
 - **WHEN** an unexpected internal exception occurs
 - **THEN** the error is wrapped with a structured TitiError (using the most applicable code) rather than producing an unformatted stack trace in production output
 
-### Requirement: Diagnostic Event Stream
+#### Scenario: ApiCompat not available
+- **WHEN** `titi version detect` requires API compatibility analysis but `Microsoft.DotNet.ApiCompat.Tool` is not installed or the baseline assembly cannot be obtained
+- **THEN** the error carries code E012 with a suggestion to install the ApiCompat tool or ensure the baseline package version is available in the configured NuGet feed
+
+### Requirement DX-03: Diagnostic Event Stream
 
 The system SHALL emit `DiagnosticEvent` records during command execution, each containing `timestamp`, `level` (debug/info/warn/error), `source`, `message`, optional `data` map, and optional `durationMs`.
 
@@ -49,7 +53,7 @@ The system SHALL emit `DiagnosticEvent` records during command execution, each c
 - **WHEN** the build completes
 - **THEN** the diagnostic event for the build step includes a non-zero `durationMs`
 
-### Requirement: Output Format Selection
+### Requirement DX-04: Output Format Selection
 
 The system SHALL support three output formats for diagnostic and command output: `"text"` (human-readable, default), `"json"` (machine-readable structured output), and `"github-actions"` (GitHub Actions workflow command annotations).
 
@@ -65,7 +69,7 @@ The system SHALL support three output formats for diagnostic and command output:
 - **WHEN** `--output github-actions` is passed (or `ci.outputFormat = "github-actions"` in config)
 - **THEN** errors are emitted as `::error file=<path>::<message>` and warnings as `::warning file=<path>::<message>` annotations
 
-### Requirement: Error Aggregation
+### Requirement DX-05: Error Aggregation
 
 The system SHALL collect and report all errors encountered during a command rather than aborting on the first error, wherever safe to do so (e.g., validation passes, affected-set computation).
 
@@ -79,7 +83,7 @@ The system SHALL collect and report all errors encountered during a command rath
 - **WHEN** the graph is loaded
 - **THEN** the command aborts immediately after emitting E006, rather than attempting to continue with a partial graph
 
-### Requirement: Actionable Suggestion Quality
+### Requirement DX-06: Actionable Suggestion Quality
 
 The system SHALL ensure every `TitiError.suggestions` entry is a concrete, executable action (e.g. a specific CLI command to run or a file to edit), not a vague description.
 

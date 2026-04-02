@@ -6,7 +6,7 @@ The graph cache capability persists the computed `MonorepoGraph` to `.titi/graph
 
 ## Requirements
 
-### Requirement: Cache Persistence
+### Requirement GC-01: Cache Persistence
 
 The system SHALL serialise the `GraphCache` (containing `schemaVersion`, the full `MonorepoGraph`, `fingerprints`, and `titiVersion`) to `.titi/graph.cache` after every successful graph construction.
 
@@ -18,7 +18,7 @@ The system SHALL serialise the `GraphCache` (containing `schemaVersion`, the ful
 - **WHEN** graph construction fails (e.g., cycle detected aborting build)
 - **THEN** any existing `.titi/graph.cache` is left unchanged
 
-### Requirement: Cache Loading
+### Requirement GC-02: Cache Loading
 
 The system SHALL attempt to load `GraphCache` from `.titi/graph.cache` at the start of any command that requires the graph, and use the cached graph when it is valid and not stale.
 
@@ -32,7 +32,7 @@ The system SHALL attempt to load `GraphCache` from `.titi/graph.cache` at the st
 - **WHEN** any command loads the graph
 - **THEN** E006 (CACHE_CORRUPT) is emitted as a warning, the cache is deleted, and the graph is rebuilt from scratch
 
-### Requirement: Subgraph Invalidation
+### Requirement GC-03: Subgraph Invalidation
 
 The system SHALL perform a partial (subgraph) re-evaluation when one or more .csproj files have changed fingerprints, updating only the affected nodes without discarding the entire cached graph. The re-evaluated subgraph consists of the changed node X AND all nodes that transitively depend on X (the downstream dependent cone); X's upstream dependencies are not re-evaluated unless they are also directly changed.
 
@@ -46,7 +46,7 @@ The system SHALL perform a partial (subgraph) re-evaluation when one or more .cs
 - **WHEN** the cache is loaded
 - **THEN** both downstream dependent cones (A and its dependents; B and its dependents) are re-evaluated independently and the cache is updated
 
-### Requirement: Full Cache Invalidation
+### Requirement GC-04: Full Cache Invalidation
 
 The system SHALL discard the entire cached graph and perform a full rebuild when any global trigger file changes, when the titi tool version changes, or when the cache age exceeds `maxAge`.
 
@@ -65,7 +65,7 @@ The system SHALL discard the entire cached graph and perform a full rebuild when
 - **WHEN** the cache is loaded
 - **THEN** the cache is fully invalidated and the graph is rebuilt
 
-### Requirement: Schema Version Compatibility
+### Requirement GC-05: Schema Version Compatibility
 
 The system SHALL reject a cached graph whose `schemaVersion` does not match the current schema version expected by the running titi binary, treating it as a full invalidation.
 
@@ -74,7 +74,7 @@ The system SHALL reject a cached graph whose `schemaVersion` does not match the 
 - **WHEN** the cache is loaded
 - **THEN** E006 is emitted and the graph is rebuilt from scratch
 
-### Requirement: Cache Write Failure Resilience
+### Requirement GC-06: Cache Write Failure Resilience
 
 The system SHALL degrade gracefully when the `.titi/` directory is not writable: a warn-level diagnostic is emitted and the command continues using the in-memory graph for the remainder of its execution without aborting.
 
@@ -83,7 +83,7 @@ The system SHALL degrade gracefully when the `.titi/` directory is not writable:
 - **WHEN** any command attempts to write the graph cache
 - **THEN** the system emits a warn-level diagnostic indicating the cache could not be written, continues execution with the in-memory graph, and exits with the appropriate code for the command's logical outcome (not code 1 solely due to the write failure)
 
-### Requirement: Cache Warm Command
+### Requirement GC-07: Cache Warm Command
 
 The system SHALL expose `titi cache warm` to explicitly pre-build and persist the graph cache, allowing CI pipelines to warm the cache before running other commands.
 
@@ -96,3 +96,16 @@ The system SHALL expose `titi cache warm` to explicitly pre-build and persist th
 - **GIVEN** a valid, non-stale cache already exists
 - **WHEN** `titi cache warm` is invoked
 - **THEN** the cache is refreshed (fingerprints updated) and the command exits 0
+
+### Requirement GC-08: Atomic Cache Writes
+
+The system SHALL write the graph cache atomically by first writing to a temporary file (`.titi/graph.cache.tmp`) and then renaming it to `.titi/graph.cache` only after the write completes successfully. If the process is interrupted during the write, the previous cache file (if any) SHALL remain intact and usable.
+
+#### Scenario: Interrupted write preserves previous cache
+- **GIVEN** a valid `.titi/graph.cache` exists from a prior build
+- **WHEN** a cache write is interrupted (e.g. process killed) while writing `.titi/graph.cache.tmp`
+- **THEN** `.titi/graph.cache` still contains the previous valid cache; `.titi/graph.cache.tmp` is an orphan that is cleaned up on next successful cache write
+
+#### Scenario: Successful atomic rename
+- **WHEN** a cache write completes and `.titi/graph.cache.tmp` is fully written
+- **THEN** the file is atomically renamed to `.titi/graph.cache` and no intermediate state is observable by concurrent readers

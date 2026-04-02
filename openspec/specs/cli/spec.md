@@ -6,7 +6,7 @@ The CLI capability defines the command-line interface surface for titi, covering
 
 ## Requirements
 
-### Requirement: titi open
+### Requirement CLI-01: titi open
 
 The system SHALL implement `titi open <project>` which generates a transient .slnx solution file containing the target project and its swapped dependency closure, then optionally launches the configured IDE.
 
@@ -19,9 +19,14 @@ The system SHALL implement `titi open <project>` which generates a transient .sl
 - **WHEN** `titi open NonExistent.Project` is invoked
 - **THEN** the command exits with code 1 and emits E001 (GRAPH_BUILD_FAILED)
 
-### Requirement: titi affected
+#### Scenario: IDE launch failure
+- **GIVEN** `ide.autoOpen = true` and the configured `ide.launchCommand` is not found on PATH
+- **WHEN** `titi open Orion.Payments` is invoked
+- **THEN** the transient .slnx is still written to `.titi/solutions/`, a warn-level diagnostic is emitted reporting the IDE launch failure, and exit code is 0
 
-The system SHALL implement `titi affected` which computes the `AffectedSet` from current git changes relative to the configured base branch and prints affected project paths, one per line by default.
+### Requirement CLI-02: titi affected
+
+The system SHALL implement `titi affected` which computes the `AffectedSet` (see `dependency-graph` spec, DG-04) from current git changes relative to the configured base branch and prints affected project paths, one per line by default.
 
 #### Scenario: Changes present
 - **GIVEN** one or more modified source files belonging to tracked projects
@@ -36,7 +41,7 @@ The system SHALL implement `titi affected` which computes the `AffectedSet` from
 - **WHEN** `titi affected --output json` is invoked
 - **THEN** a JSON object matching the `AffectedSet` schema is printed to stdout
 
-### Requirement: titi clean
+### Requirement CLI-03: titi clean
 
 The system SHALL implement `titi clean` which removes all titi-generated artifacts under `.titi/`, including the graph cache and all transient solution files.
 
@@ -49,9 +54,9 @@ The system SHALL implement `titi clean` which removes all titi-generated artifac
 - **WHEN** `.titi/` does not exist
 - **THEN** the command exits with code 0 and reports nothing to clean
 
-### Requirement: titi cache warm
+### Requirement CLI-04: titi cache warm
 
-The system SHALL implement `titi cache warm` which pre-builds and persists the full dependency graph to `.titi/graph.cache`, so subsequent commands can skip graph construction.
+The system SHALL implement `titi cache warm` which pre-builds and persists the full dependency graph (see `graph-cache` spec, GC-07) to `.titi/graph.cache`, so subsequent commands can skip graph construction.
 
 #### Scenario: Cache warmed
 - **WHEN** `titi cache warm` is invoked on a valid monorepo
@@ -61,9 +66,9 @@ The system SHALL implement `titi cache warm` which pre-builds and persists the f
 - **WHEN** `dotnet` is not on PATH
 - **THEN** the command exits with code 1 and emits E007 (MSBUILD_NOT_FOUND)
 
-### Requirement: titi build-manifest
+### Requirement CLI-05: titi build-manifest
 
-The system SHALL implement `titi build-manifest` which generates a Traversal .proj XML file listing all projects in the affected change set with their `reason` and `tier`, suitable for `dotnet build` or `dotnet msbuild`. This command internally uses the same affected-set computation as `titi affected` but produces a build-ready Traversal project rather than a list of paths.
+The system SHALL implement `titi build-manifest` which generates a Traversal .proj XML file listing all projects in the affected change set (see `dependency-graph` spec, DG-04) with their `reason` and `tier`, suitable for `dotnet build` or `dotnet msbuild`. Unlike `titi affected`, this produces a build-ready Traversal project rather than a list of paths.
 
 #### Scenario: Manifest generated
 - **GIVEN** an affected set with directly affected and transitive projects
@@ -74,9 +79,9 @@ The system SHALL implement `titi build-manifest` which generates a Traversal .pr
 - **WHEN** no projects are affected
 - **THEN** an empty Traversal .proj with no `<ProjectReference>` items is written
 
-### Requirement: titi test-manifest
+### Requirement CLI-06: titi test-manifest
 
-The system SHALL implement `titi test-manifest` which generates a Traversal .proj scoped to affected test projects, organised by tier.
+The system SHALL implement `titi test-manifest` which generates a Traversal .proj scoped to affected test projects (see `dependency-graph` spec, DG-04/DG-06), organised by tier.
 
 #### Scenario: Test manifest by tier
 - **GIVEN** affected unit and integration test projects
@@ -87,7 +92,7 @@ The system SHALL implement `titi test-manifest` which generates a Traversal .pro
 - **WHEN** `titi test-manifest --tier unit` is invoked (valid values: `unit`, `package`, `integration`, `compatibility`)
 - **THEN** only test projects matching the specified tier are included in the manifest
 
-### Requirement: titi pkg
+### Requirement CLI-07: titi pkg
 
 The system SHALL implement `titi pkg <add|remove|upgrade>` subcommands to manage `Directory.Packages.props`, adding, removing, or upgrading central package version entries.
 
@@ -107,9 +112,13 @@ The system SHALL implement `titi pkg <add|remove|upgrade>` subcommands to manage
 - **WHEN** `titi pkg remove UnknownPackage` is invoked
 - **THEN** the command exits with code 1 and reports the package is not managed centrally
 
-### Requirement: titi check
+#### Scenario: Package already exists on add
+- **WHEN** `titi pkg add Newtonsoft.Json 13.0.3` is invoked and `Newtonsoft.Json` already has an entry in `Directory.Packages.props`
+- **THEN** the command exits with code 1 and suggests using `titi pkg upgrade` instead
 
-The system SHALL implement `titi check <package>` which checks whether the specified package's current local source version is compatible with all consuming projects in the monorepo.
+### Requirement CLI-08: titi check
+
+The system SHALL implement `titi check <project>` which checks whether the specified packable project's current local source version is compatible with all consuming projects in the monorepo. A project is "compatible" when: (1) its version satisfies every consumer's version range (or CPM floor), AND (2) its target framework set has a non-empty intersection with each consumer's target framework set. The command reports each consumer with its compatibility status.
 
 #### Scenario: Compatible package
 - **GIVEN** all consumers of `Orion.Core` are compatible with its current version
@@ -121,9 +130,9 @@ The system SHALL implement `titi check <package>` which checks whether the speci
 - **WHEN** `titi check Orion.Core` is run
 - **THEN** exit code is 1 and the incompatible consumers are listed with reasons
 
-### Requirement: titi audit
+### Requirement CLI-09: titi audit
 
-The system SHALL implement `titi audit` which produces a transitive dependency audit report mapping each transitive package to its owning direct dependency and flagging vulnerabilities or version conflicts.
+The system SHALL implement `titi audit` which produces a transitive dependency audit report mapping each transitive package to its owning direct dependency, flagging version conflicts and known vulnerabilities. Vulnerability data is obtained by invoking `dotnet list package --vulnerable --format json` and correlating the results with the dependency graph. When the vulnerability data source is unavailable (e.g. no network, feed unreachable), the command SHALL emit a warning diagnostic and produce the version-conflict portion of the report without vulnerability data.
 
 #### Scenario: Audit clean repo
 - **GIVEN** no known vulnerabilities or version conflicts
@@ -135,9 +144,9 @@ The system SHALL implement `titi audit` which produces a transitive dependency a
 - **WHEN** `titi audit` is run
 - **THEN** exit code is 1 and the conflict is reported with owning projects and version ranges
 
-### Requirement: titi version detect
+### Requirement CLI-10: titi version detect
 
-The system SHALL implement `titi version detect [--dry-run] [--from <tag>] [--apply]` which runs the cascading bump algorithm over committed changesets, outputs a version plan showing each package's new version, and optionally writes the results to `version.json` files and `Directory.Packages.props`.
+The system SHALL implement `titi version detect [--dry-run] [--from <tag>] [--apply]` which runs the cascading bump algorithm (see `versioning` spec, VN-07/VN-09/VN-10) over committed changesets, outputs a version plan showing each package's new version, and optionally writes the results to `version.json` files and `Directory.Packages.props`.
 
 #### Scenario: Dry run outputs plan without writing
 - **GIVEN** one or more changeset files are present in `.changesets/`
@@ -153,9 +162,9 @@ The system SHALL implement `titi version detect [--dry-run] [--from <tag>] [--ap
 - **WHEN** `titi version detect --from v2.0.0` is invoked
 - **THEN** only changesets merged after the `v2.0.0` tag are considered when computing the version plan
 
-### Requirement: titi version validate
+### Requirement CLI-11: titi version validate
 
-The system SHALL implement `titi version validate [--fix]` which verifies that AssemblyVersion follows the `{Major}.0.0.0` pattern, CPM is enabled, lock files are present, `RestoreLockedMode` is configured for CI, and `global.json` is present with an SDK version pin. With `--fix`, auto-correctable violations are applied in place.
+The system SHALL implement `titi version validate [--fix]` which runs the version validation checks (see `versioning` spec, VN-11) covering AssemblyVersion patterns, CPM configuration, lock files, and SDK version pinning. With `--fix`, auto-correctable violations are applied in place.
 
 #### Scenario: All checks pass
 - **GIVEN** a correctly configured monorepo
@@ -171,9 +180,9 @@ The system SHALL implement `titi version validate [--fix]` which verifies that A
 - **WHEN** `titi version validate --fix` is invoked with auto-correctable violations present
 - **THEN** safe fixes (e.g. correcting `AssemblyVersion` to `{Major}.0.0.0`) are written in place and non-auto-correctable violations are reported without modification
 
-### Requirement: titi bundle create
+### Requirement CLI-12: titi bundle create
 
-The system SHALL implement `titi bundle create <name> --constituents LibA,LibB [--strategy independent|lockstep]` which scaffolds a metapackage `.csproj` referencing the specified constituent packages and registers the bundle in `bundles.yaml`.
+The system SHALL implement `titi bundle create <name> --constituents LibA,LibB [--strategy independent|lockstep]` which scaffolds a metapackage `.csproj` referencing the specified constituent packages and registers the bundle in `bundles.yaml` (see `bundles` spec, BN-01).
 
 #### Scenario: Bundle scaffolded
 - **GIVEN** `titi bundle create Orion.Bundle --constituents Orion.Core,Orion.Data` is invoked
@@ -184,9 +193,9 @@ The system SHALL implement `titi bundle create <name> --constituents LibA,LibB [
 - **WHEN** `titi bundle create Orion.Bundle --constituents Orion.Core --strategy independent` is invoked
 - **THEN** the `bundles.yaml` entry for `Orion.Bundle` records `versionStrategy: independent`
 
-### Requirement: titi bundle check
+### Requirement CLI-13: titi bundle check
 
-The system SHALL implement `titi bundle check <name>` which reports any version drift between the bundle's declared version and the versions of its constituent packages.
+The system SHALL implement `titi bundle check <name>` which reports any version drift between the bundle's declared version and the versions of its constituent packages (see `bundles` spec, BN-01).
 
 #### Scenario: No drift
 - **GIVEN** all constituents of a bundle are at their expected versions
@@ -198,9 +207,9 @@ The system SHALL implement `titi bundle check <name>` which reports any version 
 - **WHEN** `titi bundle check Orion.Bundle` is invoked
 - **THEN** exit code is 1 and the drifted constituent is listed with its current and expected versions
 
-### Requirement: titi bundle update
+### Requirement CLI-14: titi bundle update
 
-The system SHALL implement `titi bundle update <name> [--dry-run]` which updates the bundle's version to reflect its current constituent versions, optionally previewing changes without writing them.
+The system SHALL implement `titi bundle update <name> [--dry-run]` which updates the bundle's version to reflect its current constituent versions (see `bundles` spec, BN-01), optionally previewing changes without writing them.
 
 #### Scenario: Bundle version updated
 - **GIVEN** a bundle with out-of-date version relative to its constituents
@@ -211,9 +220,9 @@ The system SHALL implement `titi bundle update <name> [--dry-run]` which updates
 - **WHEN** `titi bundle update Orion.Bundle --dry-run` is invoked
 - **THEN** the proposed version update is printed and no files are modified; exit code is 0
 
-### Requirement: titi bundle lint
+### Requirement CLI-15: titi bundle lint
 
-The system SHALL implement `titi bundle lint [--all]` which scans bundle definitions for dual-reference anti-patterns (a consumer referencing both a bundle and one of its constituents directly) and stale bundles (constituents removed from the monorepo).
+The system SHALL implement `titi bundle lint [--all]` which scans bundle definitions (see `bundles` spec, BN-01) for dual-reference anti-patterns (a consumer referencing both a bundle and one of its constituents directly) and stale bundles (constituents removed from the monorepo).
 
 #### Scenario: Dual-reference anti-pattern detected
 - **GIVEN** a consuming project references both `Orion.Bundle` and its constituent `Orion.Core` directly
@@ -225,20 +234,44 @@ The system SHALL implement `titi bundle lint [--all]` which scans bundle definit
 - **WHEN** `titi bundle lint --all` is invoked
 - **THEN** the stale bundle entry is reported with the missing constituent name and exit code is 1
 
-### Requirement: titi repl
+### Requirement CLI-16: titi repl
 
-The system SHALL implement `titi repl` which launches an interactive build REPL allowing the user to explore the dependency graph, run queries, and inspect node properties.
+The system SHALL implement `titi repl` which launches an interactive build REPL allowing the user to explore the dependency graph using a defined command set. The REPL SHALL support the following commands:
+- `deps <project>`: list direct dependencies of a project
+- `dependents <project>`: list direct dependents of a project
+- `path <from> <to>`: show the shortest dependency path between two projects
+- `info <project>`: display the project's `ProjectDescriptor` fields (version, TFMs, packability, depth)
+- `affected [--from <ref>]`: compute and display the affected set from current or specified git changes
+- `tree <project> [--depth N]`: display the dependency tree rooted at a project, limited to N levels (default: 3)
+- `help`: list available commands
+- `quit` / `exit`: exit the REPL with code 0
+
+> **Note:** This is a Phase 3 command. The command set above defines the minimum viable surface; additional commands may be added in future spec revisions.
 
 #### Scenario: REPL starts
 - **WHEN** `titi repl` is invoked in a valid monorepo
-- **THEN** an interactive prompt appears and exit code on quit is 0
+- **THEN** the graph is loaded (from cache if available), an interactive `titi>` prompt appears, and exit code on quit is 0
 
-#### Scenario: Graph query in REPL
+#### Scenario: Deps query
+- **GIVEN** the REPL is running and project `Orion.Payments` has three direct dependencies
+- **WHEN** the user enters `deps Orion.Payments`
+- **THEN** the REPL prints the three dependency project paths, one per line
+
+#### Scenario: Path query
+- **GIVEN** the REPL is running and a path exists from `Orion.Api` to `Orion.Core` via `Orion.Data`
+- **WHEN** the user enters `path Orion.Api Orion.Core`
+- **THEN** the REPL prints `Orion.Api → Orion.Data → Orion.Core`
+
+#### Scenario: Unknown command
 - **GIVEN** the REPL is running
-- **WHEN** the user enters a query for a project's dependents
-- **THEN** the REPL prints the list of direct dependents for that project
+- **WHEN** the user enters an unrecognised command
+- **THEN** the REPL prints an error message and suggests `help`, without exiting
 
-### Requirement: Global CLI Flags
+#### Scenario: Graph not available
+- **WHEN** `titi repl` is invoked and the graph cannot be built (e.g. no .csproj files found)
+- **THEN** the command exits with code 1 and emits E001 (GRAPH_BUILD_FAILED)
+
+### Requirement CLI-17: Global CLI Flags
 
 The system SHALL support the following global flags on the `titi` root command:
 - `titi --help`: prints a summary of all available commands and exits with code 0
@@ -257,7 +290,7 @@ The system SHALL support the following global flags on the `titi` root command:
 - **WHEN** `titi open --help` is invoked
 - **THEN** the usage description for `titi open` is printed to stdout and the process exits with code 0
 
-### Requirement: Exit Codes
+### Requirement CLI-18: Exit Codes
 
 The system SHALL use exit code 0 for success, 1 for all command failures (including validation, graph, or build errors), and 2 for usage errors (invalid arguments or unknown subcommands).
 

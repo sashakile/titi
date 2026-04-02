@@ -33,7 +33,7 @@ graph analysis, cascading version bumps, and test impact analysis.
 
 - **Reference swap**: keep a `PackageReference` with `ExcludeAssets="All"` for
   NuGet graph resolution; inject `ProjectReference` via conditional MSBuild when
-  `$(InMonorepoContext)` is true
+  `$(InTitiContext)` is true
 - **Naming convention**: NuGet package ID must map deterministically to a
   filesystem path (e.g., `Company.Core.Data` → `src/Company.Core.Data/`)
 - **AssemblyVersion**: always `{Major}.0.0.0` to prevent runtime binding failures

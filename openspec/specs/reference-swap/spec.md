@@ -4,9 +4,11 @@
 
 The reference swap capability replaces NuGet binary package references with local project source references (and vice versa) within a transient solution context, respecting version policy, TFM compatibility, and cycle-prevention rules.
 
+> **Architecture Note — Relationship to MSBuild Integration:** The reference-swap engine is a **planning and validation** layer. It evaluates swap safety (version policy, TFM compatibility, cycle prevention, transitive floors) and produces a `SwapResult` describing which references can be safely swapped. It does NOT modify `.csproj` files directly. The actual MSBuild-level swap is performed by `Directory.Build.targets` (see spec `msbuild-integration`, requirement MB-02) at evaluation time, using convention-based prefix matching. The reference-swap engine's output determines which projects are included in the transient solution's dependency closure; the targets then execute the swap for any matching `PackageReference` when `InTitiContext=true`. Safety constraints (version policy, TFM, cycles) are enforced at planning time by this engine, not at MSBuild evaluation time by the targets.
+
 ## Requirements
 
-### Requirement: Swap Request Processing
+### Requirement RS-01: Swap Request Processing
 
 The system SHALL accept a `SwapRequest` specifying target projects, a `versionPolicy` (STRICT, SEMVER_COMPATIBLE, or FORCE), an `includeTransitive` flag, and a `force` override, then produce a `SwapResult` describing every reference decision.
 
@@ -30,7 +32,7 @@ The system SHALL accept a `SwapRequest` specifying target projects, a `versionPo
 - **WHEN** the swap is attempted
 - **THEN** the reference is retained with `RetainedReason.NO_LOCAL_SOURCE`
 
-### Requirement: Transitive Swap
+### Requirement RS-02: Transitive Swap
 
 The system SHALL recursively swap transitive package dependencies when `SwapRequest.includeTransitive` is true, following the topological order of the dependency graph.
 
@@ -44,7 +46,7 @@ The system SHALL recursively swap transitive package dependencies when `SwapRequ
 - **WHEN** includeTransitive=false
 - **THEN** only B is swapped; C remains as a binary reference
 
-### Requirement: Cycle Prevention
+### Requirement RS-03: Cycle Prevention
 
 The system SHALL refuse any swap that would introduce a cycle into the project reference graph, retaining the offending reference with `RetainedReason.CYCLE_PREVENTION` and emitting a `CycleReport`.
 
@@ -63,7 +65,7 @@ The system SHALL refuse any swap that would introduce a cycle into the project r
 - **WHEN** the swap is attempted
 - **THEN** B is swapped to a source reference, C is retained with `RetainedReason.CYCLE_PREVENTION`, and the `SwapResult` has both `swapped` (containing B) and `retained` (containing C) entries populated
 
-### Requirement: MSBuild Context Injection
+### Requirement RS-04: MSBuild Context Injection
 
 The system SHALL populate a `MSBuildContext` in `SwapResult` with `inTitiContext=true`, the configured prefix, sourceRoot, and any additional props required for the transient solution build to succeed.
 
@@ -75,7 +77,7 @@ The system SHALL populate a `MSBuildContext` in `SwapResult` with `inTitiContext
 - **WHEN** all references are retained (no swaps)
 - **THEN** SwapResult.msbuildContext has inTitiContext=false
 
-### Requirement: SEMVER_COMPATIBLE Policy
+### Requirement RS-05: SEMVER_COMPATIBLE Policy
 
 The system SHALL accept a local source project as a valid swap target when `versionPolicy=SEMVER_COMPATIBLE` if the local version's major matches and local version >= required minimum.
 
@@ -84,7 +86,7 @@ The system SHALL accept a local source project as a valid swap target when `vers
 - **WHEN** versionPolicy=SEMVER_COMPATIBLE
 - **THEN** the swap succeeds
 
-### Requirement: Transitive Floor Management
+### Requirement RS-06: Transitive Floor Management
 
 The system SHALL ensure that when a `PackageReference` is swapped for a `ProjectReference` (via `ExcludeAssets="All"`), any transitive floor versions established by the original NuGet package are respected by the `ProjectReference`. If the local project's version is lower than a required transitive floor from another path in the graph, the swap SHALL be downgraded to `BINARY` or reported as a conflict.
 

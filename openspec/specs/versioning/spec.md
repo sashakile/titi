@@ -2,11 +2,13 @@
 
 ## Purpose
 
-The versioning capability covers NuGet version resolution semantics, Central Package Management (CPM) conventions, cascading version bump propagation, changeset-based workflows, AssemblyVersion strategy, and bundle/metapackage management.
+The versioning capability covers NuGet version resolution semantics, Central Package Management (CPM) conventions, cascading version bump propagation, changeset-based workflows, and AssemblyVersion strategy.
+
+> **See also:** Bundle and metapackage management is defined in the `bundles` spec.
 
 ## Requirements
 
-### Requirement: NBGV Integration
+### Requirement VN-01: NBGV Integration
 
 The system SHALL integrate with Nerdbank.GitVersioning (NBGV). Version detection SHALL read the current version from `version.json` files via NBGV. Version apply SHALL write updated `version.json` files. Projects without a `version.json` SHALL NOT be managed by titi version commands.
 
@@ -20,7 +22,7 @@ The system SHALL integrate with Nerdbank.GitVersioning (NBGV). Version detection
 - **WHEN** `titi version detect --apply` runs
 - **THEN** the project is skipped and a diagnostic note indicates it is not managed by titi version commands
 
-### Requirement: NuGet Lowest-Applicable-Version Resolution
+### Requirement VN-02: NuGet Lowest-Applicable-Version Resolution
 
 The system SHALL document and enforce that NuGet uses lowest-applicable-version resolution: a `PackageReference Version="1.0.0"` means `>= 1.0.0`, not "exactly 1.0.0", and an exact pin requires the interval syntax `[1.0.0]`.
 
@@ -34,7 +36,7 @@ The system SHALL document and enforce that NuGet uses lowest-applicable-version 
 - **WHEN** restore runs
 - **THEN** only version 2.0.0 is accepted; restore fails if 2.0.0 is unavailable
 
-### Requirement: Central Package Management
+### Requirement VN-03: Central Package Management
 
 The system SHALL require `ManagePackageVersionsCentrally=true` in `Directory.Packages.props` and MUST enable `CentralPackageTransitivePinningEnabled=true` to establish a transitive version floor across the monorepo.
 
@@ -48,7 +50,7 @@ The system SHALL require `ManagePackageVersionsCentrally=true` in `Directory.Pac
 - **WHEN** a transitive dependency would otherwise resolve to a version below the floor set in `Directory.Packages.props`
 - **THEN** the floor version is used instead
 
-### Requirement: Lock File Management
+### Requirement VN-04: Lock File Management
 
 The system SHALL enforce `RestorePackagesWithLockFile=true` in `Directory.Packages.props` and require `RestoreLockedMode=true` in CI environments only, ensuring reproducible restores in CI while allowing lock file updates locally.
 
@@ -61,7 +63,7 @@ The system SHALL enforce `RestorePackagesWithLockFile=true` in `Directory.Packag
 - **WHEN** `titi pkg upgrade` modifies `Directory.Packages.props`
 - **THEN** the system runs `dotnet restore --force-evaluate` to regenerate the lock file
 
-### Requirement: NuGet 6.12 CPM Regression Workaround
+### Requirement VN-05: NuGet 6.12 CPM Regression Workaround
 
 The system SHALL apply `RestoreUseLegacyDependencyResolver=true` in `Directory.Packages.props` when CPM transitive pinning is enabled, to avoid false NU1605 warnings introduced by the NuGet 6.12 regression.
 
@@ -75,7 +77,7 @@ The system SHALL apply `RestoreUseLegacyDependencyResolver=true` in `Directory.P
 - **WHEN** `titi version validate` runs
 - **THEN** a warning is emitted recommending the workaround
 
-### Requirement: AssemblyVersion Major-Only Strategy
+### Requirement VN-06: AssemblyVersion Major-Only Strategy
 
 The system SHALL require that all projects in the monorepo set `AssemblyVersion` to `{Major}.0.0.0`, retaining only the major component to maximise binary compatibility across minor and patch releases.
 
@@ -89,17 +91,19 @@ The system SHALL require that all projects in the monorepo set `AssemblyVersion`
 - **WHEN** `titi version validate` runs
 - **THEN** a validation error is emitted specifying the expected `{Major}.0.0.0` pattern
 
-### Requirement: Cascading Bump Algorithm
+### Requirement VN-07: Cascading Bump Algorithm
 
-The system SHALL implement a cascading version bump algorithm that: builds the dependency graph, identifies changed packages, determines the bump type (patch/minor/major) per package using `Microsoft.DotNet.ApiCompat`, topologically propagates the bump only where the API surface has changed, and applies the highest bump type when multiple propagation paths converge.
+The system SHALL implement a cascading version bump algorithm that: builds the dependency graph, identifies changed packable projects, determines whether each project's public API surface has changed relative to its last published baseline, topologically propagates bumps only where the API surface has changed, and applies the highest bump type when multiple propagation paths converge.
 
 The algorithm proceeds as follows:
-1. For each changed package, run `Microsoft.DotNet.ApiCompat.Tool` comparing the baseline (last published) assembly against the locally built assembly to determine whether the public API surface has changed.
-2. If ApiCompat reports no public API differences, the change is internal-only — the package receives the bump from its changeset but does **not** propagate to dependents.
-3. If ApiCompat reports additive-only changes (new public types/members), propagate a **minor** bump to direct dependents.
-4. If ApiCompat reports breaking changes (removed/changed public types/members), propagate a **major** bump to direct dependents.
-5. Propagation continues topologically: each dependent is re-evaluated via ApiCompat only if it received a propagated bump. If the dependent's own public API is unchanged by the new version of its dependency, propagation stops at that node.
-6. When multiple propagation paths converge on a single package, the highest bump type wins.
+1. For each changed packable project, compare its current public API surface against the baseline (last published) version to determine whether the API has changed. The comparison SHALL detect additive changes (new public types/members) and breaking changes (removed/changed public types/members).
+2. If the comparison reports no public API differences, the change is internal-only — the project receives the bump from its changeset but does **not** propagate to dependents.
+3. If the comparison reports additive-only changes, propagate a **minor** bump to direct dependents.
+4. If the comparison reports breaking changes, propagate a **major** bump to direct dependents.
+5. Propagation continues topologically: each dependent is re-evaluated only if it received a propagated bump. If the dependent's own public API is unchanged by the new version of its dependency, propagation stops at that node.
+6. When multiple propagation paths converge on a single project, the highest bump type wins.
+
+> **Implementation Note:** The reference implementation uses `Microsoft.DotNet.ApiCompat.Tool` (>= 8.0) for API surface comparison. Any tool that can reliably detect additive vs. breaking public API changes between two .NET assemblies satisfies steps 1-4.
 
 #### Scenario: Internal-only patch does not propagate
 - **GIVEN** package A has a patch changeset and ApiCompat confirms no public API surface change between the baseline and current build
@@ -121,7 +125,26 @@ The algorithm proceeds as follows:
 - **WHEN** bumps are applied
 - **THEN** C receives a minor bump
 
-### Requirement: Changeset File Format
+### Requirement VN-08: Baseline Assembly Acquisition
+
+The system SHALL obtain baseline assemblies for API surface comparison by restoring the last published version of each changed packable project from the configured NuGet feed(s). The baseline version is determined from the project's `version.json` file (via NBGV) as the most recent release version prior to the current working version.
+
+#### Scenario: Baseline restored from feed
+- **GIVEN** packable project `Orion.Core` has `version.json` with version `2.3.0-alpha` and the last published version is `2.2.0`
+- **WHEN** the cascading bump algorithm requires a baseline for `Orion.Core`
+- **THEN** `Orion.Core` version `2.2.0` is restored from the NuGet feed and used as the baseline assembly
+
+#### Scenario: No published baseline exists
+- **GIVEN** a packable project has never been published (no version exists on any configured feed)
+- **WHEN** the cascading bump algorithm runs
+- **THEN** the project is treated as having a fully breaking API change (all public API is new), receiving at minimum a minor bump and propagating accordingly
+
+#### Scenario: Baseline feed unreachable
+- **GIVEN** the configured NuGet feed is unreachable
+- **WHEN** `titi version detect` runs
+- **THEN** E012 (APICOMPAT_NOT_AVAILABLE) is emitted with a suggestion to check feed connectivity or use `--dry-run` to skip API comparison
+
+### Requirement VN-09: Changeset File Format
 
 Changeset files SHALL live in the `.changesets/` directory at the repository root. Each file must be a `.yaml` file (filename convention: `<timestamp>-<package-id>.yaml`, though any `.yaml` file in the directory is accepted). Required fields are:
 - `package`: the package ID (e.g. `Orion.Core.Data`)
@@ -141,7 +164,7 @@ description: Add async overloads to IDataService
 - **WHEN** `titi version detect` runs
 - **THEN** `Orion.Core.Data` receives a minor bump (highest wins) and the version plan reflects this
 
-### Requirement: Changeset-Based Workflow
+### Requirement VN-10: Changeset-Based Workflow
 
 The system SHALL support a changeset-based versioning workflow where each PR includes a changeset file specifying the affected packages and their bump types, and `titi version detect` aggregates changesets to compute final version increments.
 
@@ -158,7 +181,7 @@ The system SHALL support a changeset-based versioning workflow where each PR inc
 - **WHEN** `titi version detect --apply` is invoked
 - **THEN** the computed version increments are written to the `version.json` files managed by Nerdbank.GitVersioning (NBGV) for each affected package, and `Directory.Packages.props` is updated for any CPM-pinned entries
 
-### Requirement: titi version validate
+### Requirement VN-11: titi version validate
 
 The system SHALL implement `titi version validate` which checks: AssemblyVersion pattern, CPM enabled, lock files present, `RestoreLockedMode` present in CI config, `global.json` SDK version pinned, and no suppressed NU1605 warnings.
 
@@ -175,21 +198,3 @@ The system SHALL implement `titi version validate` which checks: AssemblyVersion
 #### Scenario: Fix flag applied
 - **WHEN** `titi version validate --fix` is invoked
 - **THEN** auto-correctable violations (e.g. incorrect AssemblyVersion pattern) are fixed in-place and non-auto-correctable violations are reported
-
-### Requirement: Bundle and Metapackage Management
-
-The system SHALL support bundle (metapackage) definitions via `bundles.yaml` at the repo root, with commands `titi bundle create|check|update|lint` managing bundle composition, constituent visibility, and independent versioning.
-
-#### Scenario: Bundle creation
-- **WHEN** `titi bundle create <name>` is invoked with a list of constituent packages
-- **THEN** an entry is added to `bundles.yaml` with `PrivateAssets="none"` for each constituent and `IncludeBuildOutput=false` on the bundle project
-
-#### Scenario: Bundle lint detects misconfiguration
-- **GIVEN** a bundle whose constituent is missing `PrivateAssets="none"`
-- **WHEN** `titi bundle lint` runs
-- **THEN** exit code is 1 and the missing attribute is reported with the constituent package name
-
-#### Scenario: Bundle independent versioning
-- **GIVEN** a bundle with `versionStrategy: independent` in `bundles.yaml`
-- **WHEN** the cascading bump runs
-- **THEN** the bundle's version is bumped only if a constituent's public API surface changed (as detected by ApiCompat on the bundle's own public API); internal-only bumps within constituents do not cascade to the bundle. The bundle has its own changeset files to control explicit version bumps independent of constituent changes.

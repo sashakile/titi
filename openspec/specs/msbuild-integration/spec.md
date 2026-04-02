@@ -4,9 +4,11 @@
 
 The MSBuild integration capability defines the property and target contract between titi and the MSBuild evaluation pipeline, including `Directory.Build.props` additions, the swap-logic targets, and the set of properties that form a breaking public contract.
 
+> **Architecture Note — Relationship to Reference Swap:** The `Directory.Build.targets` swap logic (MB-02) is the **execution** layer — it performs convention-based prefix matching at MSBuild evaluation time. It does NOT enforce version policy, TFM compatibility, or cycle-prevention rules. Those safety checks are performed by the reference-swap engine (spec `reference-swap`) at planning time, before the transient solution is generated. The targets intentionally use a simple, deterministic rule (prefix match + source exists) so that MSBuild evaluation remains fast and predictable. If a developer opens a titi-generated `.slnx`, only projects that passed reference-swap validation are included in the solution's dependency closure, so the targets will only encounter pre-validated swap candidates under normal usage.
+
 ## Requirements
 
-### Requirement: Directory.Build.props Additions
+### Requirement MB-01: Directory.Build.props Additions
 
 The system SHALL add four MSBuild properties to `Directory.Build.props`: `TitiPrefix`, `TitiSourceRoot`, `InTitiContext` (defaulting to `false`), and `AccelerateBuildsInVisualStudio`.
 
@@ -19,7 +21,7 @@ The system SHALL add four MSBuild properties to `Directory.Build.props`: `TitiPr
 - **WHEN** a normal build is performed outside of a titi-generated solution
 - **THEN** `InTitiContext` evaluates to `false` and no package references are swapped
 
-### Requirement: Swap Logic Targets
+### Requirement MB-02: Swap Logic Targets
 
 The system SHALL implement `Directory.Build.targets` swap logic that, when `InTitiContext=true`, discovers each `PackageReference` whose ID matches `$(TitiPrefix)*` and has a corresponding project under `$(TitiSourceRoot)`, sets `ExcludeAssets=All` on the package reference, and injects a `ProjectReference` to the local source project.
 
@@ -38,7 +40,12 @@ The system SHALL implement `Directory.Build.targets` swap logic that, when `InTi
 - **WHEN** `Directory.Build.targets` is evaluated
 - **THEN** the package reference is left as-is (binary) and no ProjectReference is injected
 
-### Requirement: Breaking Property Contract
+#### Scenario: Manual InTitiContext bypass
+- **GIVEN** a developer manually sets `InTitiContext=true` in a non-titi-generated solution
+- **WHEN** `Directory.Build.targets` is evaluated
+- **THEN** prefix-matched packages are swapped without reference-swap safety checks; this is unsupported and titi provides no guarantees about version compatibility, TFM alignment, or cycle safety in this scenario
+
+### Requirement MB-03: Breaking Property Contract
 
 The system SHALL treat the three properties `InTitiContext`, `TitiPrefix`, and `TitiSourceRoot` as titi-owned public breaking contract properties: renaming or removing any of them constitutes a breaking change requiring a major version bump.
 
@@ -53,7 +60,7 @@ The system SHALL treat the three properties `InTitiContext`, `TitiPrefix`, and `
 - **WHEN** a new version of titi is installed
 - **THEN** the property name remains `InTitiContext` and the consumer's targets continue to evaluate correctly
 
-### Requirement: AccelerateBuildsInVisualStudio
+### Requirement MB-04: AccelerateBuildsInVisualStudio
 
 The system SHALL set `AccelerateBuildsInVisualStudio=true` in the titi-generated solution's global properties to enable Visual Studio's build acceleration feature. Note: this is a Visual Studio convention, **not** a titi-owned property — see Requirement "Breaking Property Contract" above for ownership boundaries.
 
@@ -67,7 +74,7 @@ The system SHALL set `AccelerateBuildsInVisualStudio=true` in the titi-generated
 - **WHEN** `AccelerateBuildsInVisualStudio` is evaluated
 - **THEN** its value comes from the repo's own `Directory.Build.props` default, which MAY be `false`
 
-### Requirement: MSBuild Locator Initialisation
+### Requirement MB-05: MSBuild Locator Initialisation
 
 The system SHALL call `Microsoft.Build.Locator.RegisterDefaults()` before referencing any MSBuild type. If no valid MSBuild installation is found, the system SHALL emit E007 (MSBUILD_NOT_FOUND) and abort.
 
@@ -81,7 +88,7 @@ The system SHALL call `Microsoft.Build.Locator.RegisterDefaults()` before refere
 - **WHEN** any MSBuild-dependent operation is initialised
 - **THEN** E007 (MSBUILD_NOT_FOUND) is emitted with an actionable suggestion and the command exits with code 1
 
-### Requirement: MSBuild Not Found Handling
+### Requirement MB-06: MSBuild Not Found Handling
 
 The system SHALL detect when `dotnet` is not available on PATH before invoking any MSBuild-dependent operation and emit error E007 (MSBUILD_NOT_FOUND) with an actionable suggestion.
 
@@ -89,17 +96,3 @@ The system SHALL detect when `dotnet` is not available on PATH before invoking a
 - **GIVEN** the `dotnet` executable is not found in any PATH entry
 - **WHEN** a command requiring MSBuild evaluation is invoked
 - **THEN** the system emits E007 with a suggestion to install the .NET SDK, and exits with code 1
-
-### Requirement: ClojureCLR Compilation
-
-The titi CLI project SHALL use the `ClojureCLR.Next.SDK` MSBuild tasks to compile `.clj` source files. Source files under `src/` SHALL be included as `EmbeddedResource` items to enable runtime loading, and SHALL be AOT-compiled into the assembly when `<ClojureAOT>true</ClojureAOT>` is set in the `.csproj`.
-
-#### Scenario: Source files as EmbeddedResource
-- **GIVEN** a `.clj` file in `src/titi/`
-- **WHEN** the project is built
-- **THEN** the file is included in the output assembly as an `EmbeddedResource` named according to its namespace
-
-#### Scenario: AOT Compilation enabled
-- **GIVEN** `<ClojureAOT>true</ClojureAOT>` is set in `titi.csproj`
-- **WHEN** `dotnet build` is run
-- **THEN** the Clojure compiler is invoked during the MSBuild `CoreCompile` phase to produce `.dll` or `.class` equivalents in the assembly
