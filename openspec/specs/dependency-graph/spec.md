@@ -49,7 +49,7 @@ The system SHALL assign each `GraphNode` a `depth` value equal to the length of 
 
 ### Requirement DG-04: Affected Set Computation
 
-The system SHALL compute an `AffectedSet` from a set of changed files, identifying projects directly affected (own source changed) and transitively affected (depend on a directly affected project), and partitioning affected test projects into a `TieredTestSet`.
+The system SHALL compute an `AffectedSet` from a set of changed files, identifying projects directly affected (own source changed) and transitively affected (depend on a directly affected project), and partitioning affected test projects into a `TieredTestSet`. The `directlyAffected` and `transitivelyAffected` sets SHALL be mutually exclusive: a project that qualifies as both (own source changed AND depends on another directly affected project) SHALL appear only in `directlyAffected`.
 
 #### Scenario: Direct file change
 - **GIVEN** a source file belonging to project X is modified

@@ -51,7 +51,7 @@ The system SHALL read a `CacheConfig` sub-section specifying `enabled` (boolean,
 
 ### Requirement CF-04: Test Tier Configuration
 
-The system SHALL read a `TestTierConfig` defining glob patterns for `unit`, `package`, `integration`, and `compatibility` test project tiers, plus a `defaultTier` for projects that match no pattern. The tiers are defined as:
+The system SHALL read a `TestTierConfig` defining glob patterns for `unit`, `package`, `integration`, and `compatibility` test project tiers, plus a `defaultTier` for projects that match no pattern. Tier globs SHALL be evaluated in the order: `unit`, `package`, `integration`, `compatibility`; the first matching tier wins. The tiers are defined as:
 - **unit**: isolated tests with no external dependencies
 - **package**: tests for a library as consumers would use it (contract/package-level integration)
 - **integration**: tests crossing service or domain boundaries
@@ -88,7 +88,7 @@ The system SHALL read an `IdeConfig` with `launchCommand` (executable path), `ar
 
 ### Requirement CF-06: CI Configuration
 
-The system SHALL read a `CiConfig` with `fullRegressionBranches` (list of branch name patterns), `maxParallelism` (integer), and `outputFormat` (`"json"` | `"text"` | `"github-actions"`).
+The system SHALL read a `CiConfig` with `fullRegressionBranches` (list of branch name patterns), `maxParallelism` (integer), and `outputFormat` (`"json"` | `"text"` | `"github-actions"`). When a CLI `--output` flag is also provided, the CLI flag SHALL take precedence over `ci.outputFormat`; when both are absent, the default is `"text"` (see `diagnostics` spec, DX-04).
 
 #### Scenario: Full regression on main
 - **GIVEN** `ci.fullRegressionBranches = ["main", "release/*"]` and the current branch is `"main"`

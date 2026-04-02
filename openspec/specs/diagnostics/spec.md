@@ -55,7 +55,7 @@ The system SHALL emit `DiagnosticEvent` records during command execution, each c
 
 ### Requirement DX-04: Output Format Selection
 
-The system SHALL support three output formats for diagnostic and command output: `"text"` (human-readable, default), `"json"` (machine-readable structured output), and `"github-actions"` (GitHub Actions workflow command annotations).
+The system SHALL support three output formats for diagnostic and command output: `"text"` (human-readable, default), `"json"` (machine-readable structured output), and `"github-actions"` (GitHub Actions workflow command annotations). The CLI `--output` flag takes precedence over `ci.outputFormat` in config (see `configuration` spec, CF-06); when neither is specified, the default is `"text"`.
 
 #### Scenario: Text format default
 - **WHEN** a command runs without an explicit format flag

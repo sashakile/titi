@@ -95,13 +95,13 @@ The system SHALL require that all projects in the monorepo set `AssemblyVersion`
 
 The system SHALL implement a cascading version bump algorithm that: builds the dependency graph, identifies changed packable projects, determines whether each project's public API surface has changed relative to its last published baseline, topologically propagates bumps only where the API surface has changed, and applies the highest bump type when multiple propagation paths converge.
 
-The algorithm proceeds as follows:
-1. For each changed packable project, compare its current public API surface against the baseline (last published) version to determine whether the API has changed. The comparison SHALL detect additive changes (new public types/members) and breaking changes (removed/changed public types/members).
-2. If the comparison reports no public API differences, the change is internal-only — the project receives the bump from its changeset but does **not** propagate to dependents.
-3. If the comparison reports additive-only changes, propagate a **minor** bump to direct dependents.
-4. If the comparison reports breaking changes, propagate a **major** bump to direct dependents.
-5. Propagation continues topologically: each dependent is re-evaluated only if it received a propagated bump. If the dependent's own public API is unchanged by the new version of its dependency, propagation stops at that node.
-6. When multiple propagation paths converge on a single project, the highest bump type wins.
+The system SHALL define a `BumpClassification` enum with ordered values `INTERNAL_ONLY` < `ADDITIVE` < `BREAKING`. The algorithm assigns a `BumpClassification` to each changed project and proceeds as follows:
+1. For each changed packable project, compare its current public API surface against the baseline (last published) version. The comparison SHALL detect additive changes (new public types/members) and breaking changes (removed/changed public types/members), producing a `BumpClassification`: `INTERNAL_ONLY` (no public API differences), `ADDITIVE` (new public API only), or `BREAKING` (removed/changed public API).
+2. If the classification is `INTERNAL_ONLY`, the project receives the bump from its changeset but does **not** propagate to dependents.
+3. If the classification is `ADDITIVE`, propagate a **minor** bump to direct dependents.
+4. If the classification is `BREAKING`, propagate a **major** bump to direct dependents.
+5. Propagation continues topologically: each dependent is re-evaluated only if it received a propagated bump. If the dependent's own public API is unchanged by the new version of its dependency, propagation stops at that node (classified as `INTERNAL_ONLY` for propagation purposes).
+6. When multiple propagation paths converge on a single project, the highest `BumpClassification` wins (e.g. `BREAKING` > `ADDITIVE` > `INTERNAL_ONLY`).
 
 > **Implementation Note:** The reference implementation uses `Microsoft.DotNet.ApiCompat.Tool` (>= 8.0) for API surface comparison. Any tool that can reliably detect additive vs. breaking public API changes between two .NET assemblies satisfies steps 1-4.
 

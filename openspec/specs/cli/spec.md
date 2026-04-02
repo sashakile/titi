@@ -146,11 +146,11 @@ The system SHALL implement `titi audit` which produces a transitive dependency a
 
 ### Requirement CLI-10: titi version detect
 
-The system SHALL implement `titi version detect [--dry-run] [--from <tag>] [--apply]` which runs the cascading bump algorithm (see `versioning` spec, VN-07/VN-09/VN-10) over committed changesets, outputs a version plan showing each package's new version, and optionally writes the results to `version.json` files and `Directory.Packages.props`.
+The system SHALL implement `titi version detect [--from <tag>] [--apply]` which runs the cascading bump algorithm (see `versioning` spec, VN-07/VN-09/VN-10) over committed changesets and outputs a version plan showing each package's new version. The default mode (no flags) is preview: the plan is printed but no files are modified. The `--apply` flag writes the results to `version.json` files and `Directory.Packages.props`.
 
-#### Scenario: Dry run outputs plan without writing
+#### Scenario: Preview mode outputs plan without writing
 - **GIVEN** one or more changeset files are present in `.changesets/`
-- **WHEN** `titi version detect --dry-run` is invoked
+- **WHEN** `titi version detect` is invoked without `--apply`
 - **THEN** the computed version plan is printed to stdout and no files are modified; exit code is 0
 
 #### Scenario: Apply writes version files

@@ -29,7 +29,9 @@ The system SHALL represent each .NET project as a `ProjectDescriptor` containing
 #### Scenario: Minimal project descriptor
 - **GIVEN** a .csproj with no NuGet metadata and a single TFM
 - **WHEN** the project is parsed
-- **THEN** packageId and version are absent or empty, and `isPackable` is false
+- **THEN** packageId and version are absent (not empty strings), and `isPackable` is false
+
+> **Invariant:** `isPackable=true` implies both `packageId` and `version` are present. Absent fields SHALL be represented as the language's native absence value (e.g. `nil`, `None`, `null`), never as empty strings.
 
 ### Requirement DM-02: Semantic Version
 
@@ -49,7 +51,7 @@ The system SHALL represent version strings as a structured `SemanticVersion` wit
 
 ### Requirement DM-03: Target Framework Moniker
 
-The system SHALL represent each target framework as a `TFM` with a `moniker` string (e.g. `"net9.0"`), a `framework` identifier, and a `version` component.
+The system SHALL represent each target framework as a `TFM` constructed from a `moniker` string (e.g. `"net9.0"`). The `framework` identifier and `version` component SHALL be derived (computed) from the moniker at construction time and MUST NOT be independently settable.
 
 #### Scenario: Standard TFM parse
 - **WHEN** the moniker `"net9.0"` is parsed
@@ -62,11 +64,11 @@ The system SHALL represent each target framework as a `TFM` with a `moniker` str
 
 ### Requirement DM-04: Package Reference
 
-The system SHALL represent each NuGet package reference as a `PackageRef` with `packageId`, `versionRange`, and optional `privateAssets` and `excludeAssets` attributes.
+The system SHALL represent each NuGet package reference as a `PackageRef` with `packageId`, a parsed `NuGetVersionRange`, and optional `privateAssets` and `excludeAssets` attributes. The `NuGetVersionRange` SHALL be a self-validating value object that rejects invalid NuGet version range syntax at construction time and exposes semantic operations (e.g. `satisfiedBy(version)`, `floor()`, `isExactPin()`).
 
 #### Scenario: Standard package reference
 - **WHEN** `<PackageReference Include="Newtonsoft.Json" Version="13.0.1" />` is parsed
-- **THEN** packageId is `"Newtonsoft.Json"` and versionRange is `"13.0.1"`
+- **THEN** packageId is `"Newtonsoft.Json"` and versionRange is a `NuGetVersionRange` representing `>= 13.0.1`
 
 #### Scenario: Reference with private assets
 - **WHEN** a `PackageReference` with `PrivateAssets="All"` is parsed

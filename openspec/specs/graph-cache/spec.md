@@ -67,7 +67,7 @@ The system SHALL discard the entire cached graph and perform a full rebuild when
 
 ### Requirement GC-05: Schema Version Compatibility
 
-The system SHALL reject a cached graph whose `schemaVersion` does not match the current schema version expected by the running titi binary, treating it as a full invalidation.
+The system SHALL reject a cached graph whose `schemaVersion` does not match the current schema version expected by the running titi binary, treating it as a full invalidation. Unlike the config `schemaVersion` (see `configuration` spec, CF-02) which uses forward-compatible defaults for older schemas, the cache uses strict equality because cache format changes require a full rebuild to ensure data integrity.
 
 #### Scenario: Schema version mismatch
 - **GIVEN** the cache file has `schemaVersion = "1"` but the current titi binary expects `"2"`
