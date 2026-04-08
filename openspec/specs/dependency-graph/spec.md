@@ -23,6 +23,10 @@ The system SHALL construct a `MonorepoGraph` by scanning all .csproj files under
 
 The system SHALL compute a stable topological sort of all `GraphNode` entries and store it as `MonorepoGraph.topologicalOrder`, such that every project appears after all its dependencies.
 
+> **Invariant — Stability:** When the dependency graph is unchanged between invocations, `topologicalOrder` SHALL be identical. Ties among nodes with no mutual dependency SHALL be broken by lexicographic order of canonical project path.
+
+> **Invariant — Node Preservation:** `|topologicalOrder| = |MonorepoGraph.nodes|` — the sort SHALL neither drop nor duplicate any graph node.
+
 #### Scenario: Linear dependency chain
 - **GIVEN** projects A → B → C
 - **WHEN** the graph is sorted
@@ -50,6 +54,10 @@ The system SHALL assign each `GraphNode` a `depth` value equal to the length of 
 ### Requirement DG-04: Affected Set Computation
 
 The system SHALL compute an `AffectedSet` from a set of changed files, identifying projects directly affected (own source changed) and transitively affected (depend on a directly affected project), and partitioning affected test projects into a `TieredTestSet`. The `directlyAffected` and `transitivelyAffected` sets SHALL be mutually exclusive: a project that qualifies as both (own source changed AND depends on another directly affected project) SHALL appear only in `directlyAffected`.
+
+> **Invariant — Mutual Exclusion:** `directlyAffected ∩ transitivelyAffected = ∅`.
+
+> **Invariant — Completeness:** For every project P in the graph, if P is reachable via dependency edges from any project in `directlyAffected`, then P SHALL appear in either `directlyAffected` or `transitivelyAffected`. No downstream dependent of a directly affected project shall be omitted.
 
 #### Scenario: Direct file change
 - **GIVEN** a source file belonging to project X is modified
@@ -118,7 +126,7 @@ The system SHALL meet the following performance targets on commodity hardware (4
 - Affected-set computation from a warm graph SHALL complete within 2 seconds for a monorepo containing up to 1000 .csproj files.
 - Topological sort SHALL complete within 1 second for graphs up to 1000 nodes.
 
-> **Note:** These are order-of-magnitude targets for CI and developer-experience planning. Actual thresholds may be revised after benchmarking the reference implementation.
+> **Benchmark methodology:** Performance tests SHALL use a synthetic monorepo fixture with the specified project count and a representative dependency density (average 5 dependencies per project). Each threshold is validated as the median of 5 consecutive runs on the specified hardware class. CI runners SHALL document their hardware tier to enable threshold adjustment via a scaling factor.
 
 #### Scenario: Large repo graph construction
 - **GIVEN** a monorepo with 800 .csproj files and typical inter-project dependency density
@@ -132,7 +140,21 @@ The system SHALL meet the following performance targets on commodity hardware (4
 
 ### Requirement DG-09: Single-Writer Concurrency
 
-The system SHALL assume single-writer access to the `.titi/` directory. If a titi command detects that another titi process is actively writing to `.titi/graph.cache` (e.g. via a lock file), it SHALL wait up to 10 seconds for the lock to release, then emit a warn-level diagnostic and proceed with a fresh in-memory graph build rather than reading a partially written cache.
+The system SHALL assume single-writer access to the `.titi/` directory. The system SHALL use a lock file (`.titi/graph.cache.lock`) to coordinate single-writer access. If a titi command detects that another titi process holds the lock, it SHALL wait up to 10 seconds for the lock to release, then emit a warn-level diagnostic and proceed with a fresh in-memory graph build rather than reading a partially written cache.
+
+The lock protocol SHALL follow this state machine:
+
+1. **UNLOCKED** → writer creates `.titi/graph.cache.lock` containing its PID and timestamp → **ACQUIRED**
+2. **ACQUIRED** → writer begins writing `.titi/graph.cache.tmp` → **WRITING**
+3. **WRITING** → writer completes the tmp file and atomically renames it to `.titi/graph.cache` → **RENAMED**
+4. **RENAMED** → writer deletes `.titi/graph.cache.lock` → **UNLOCKED**
+
+Crash recovery by state:
+- Crash during **ACQUIRED**: lock file exists, no `.tmp` file. Next process detects stale lock via PID liveness check and removes it.
+- Crash during **WRITING**: lock file and partial `.tmp` file exist. Next process detects stale lock, removes both the lock and the orphaned `.tmp` file, and proceeds. The previous `.titi/graph.cache` (if any) remains intact.
+- Crash during **RENAMED**: `.titi/graph.cache` is valid (rename completed). Lock file is orphaned. Next process detects stale lock and removes it.
+
+Stale lock detection SHALL use OS-level PID liveness checks (e.g. `kill(pid, 0)` on POSIX, `OpenProcess` on Windows). If the recorded PID is not running, the lock is considered stale. PID reuse is mitigated by also checking the lock file's timestamp: a lock older than 60 seconds with a non-running PID is unconditionally stale.
 
 #### Scenario: Concurrent titi invocation
 - **GIVEN** one `titi cache warm` process is writing to `.titi/graph.cache`

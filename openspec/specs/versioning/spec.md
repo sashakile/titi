@@ -103,7 +103,15 @@ The system SHALL define a `BumpClassification` enum with ordered values `INTERNA
 5. Propagation continues topologically: each dependent is re-evaluated only if it received a propagated bump. If the dependent's own public API is unchanged by the new version of its dependency, propagation stops at that node (classified as `INTERNAL_ONLY` for propagation purposes).
 6. When multiple propagation paths converge on a single project, the highest `BumpClassification` wins (e.g. `BREAKING` > `ADDITIVE` > `INTERNAL_ONLY`).
 
-> **Implementation Note:** The reference implementation uses `Microsoft.DotNet.ApiCompat.Tool` (>= 8.0) for API surface comparison. Any tool that can reliably detect additive vs. breaking public API changes between two .NET assemblies satisfies steps 1-4.
+> **Postconditions:** The algorithm SHALL guarantee the following upon completion:
+> 1. **Monotonicity:** For every package P in the version plan, `P.newVersion > P.baselineVersion`.
+> 2. **Termination:** The algorithm processes each node at most once in topological order. For a DAG with |V| nodes, the algorithm completes in at most |V| steps.
+> 3. **Idempotency:** Running the algorithm twice on the same graph state and changeset inputs SHALL produce an identical version plan.
+> 4. **Convergence:** When multiple propagation paths reach the same node, the final BumpClassification is the maximum across all incoming paths, applied exactly once.
+
+> **Multi-TFM Behavior:** When a project targets multiple TFMs, ApiCompat SHALL compare assemblies for each TFM independently. The project's `BumpClassification` is the maximum classification across all TFM comparisons. For example, if a change is `ADDITIVE` on `net9.0` and `INTERNAL_ONLY` on `net8.0`, the project receives `ADDITIVE`.
+
+> **Implementation Note:** The reference implementation uses `Microsoft.DotNet.ApiCompat.Tool` (>= 8.0) for API surface comparison. Any tool that can reliably detect additive vs. breaking public API changes between two .NET assemblies satisfies steps 1-4. The system SHALL consume ApiCompat's structured output (suppression XML or exit code) to determine the classification. If ApiCompat output cannot be parsed (unexpected format or version incompatibility), the system SHALL treat the project as `BREAKING` for safety and emit a warn-level diagnostic.
 
 #### Scenario: Internal-only patch does not propagate
 - **GIVEN** package A has a patch changeset and ApiCompat confirms no public API surface change between the baseline and current build
@@ -142,7 +150,7 @@ The system SHALL obtain baseline assemblies for API surface comparison by restor
 #### Scenario: Baseline feed unreachable
 - **GIVEN** the configured NuGet feed is unreachable
 - **WHEN** `titi version detect` runs
-- **THEN** E012 (APICOMPAT_NOT_AVAILABLE) is emitted with a suggestion to check feed connectivity or use `--dry-run` to skip API comparison
+- **THEN** E012 (APICOMPAT_NOT_AVAILABLE) is emitted with a suggestion to check feed connectivity; all changed projects are treated as `BREAKING` for cascade propagation purposes, since API surface comparison cannot be performed
 
 ### Requirement VN-09: Changeset File Format
 
@@ -173,8 +181,8 @@ The system SHALL support a changeset-based versioning workflow where each PR inc
 - **WHEN** `titi version detect` runs
 - **THEN** `Orion.Core` receives a minor bump (highest wins)
 
-#### Scenario: Dry run
-- **WHEN** `titi version detect --dry-run` is invoked
+#### Scenario: Preview mode (default)
+- **WHEN** `titi version detect` is invoked without `--apply`
 - **THEN** the computed version increments are printed but no files are modified
 
 #### Scenario: Apply flag writes versions

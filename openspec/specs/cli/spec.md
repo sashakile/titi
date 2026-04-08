@@ -276,6 +276,8 @@ The system SHALL implement `titi repl` which launches an interactive build REPL 
 The system SHALL support the following global flags on the `titi` root command:
 - `titi --help`: prints a summary of all available commands and exits with code 0
 - `titi --version`: prints the current titi version string and exits with code 0
+- `titi --verbose`: enables debug-level diagnostic output on stderr (see `diagnostics` spec, DX-03)
+- `titi --output <text|json|github-actions>`: selects the output format for command results and diagnostics; takes precedence over `ci.outputFormat` in config (see `diagnostics` spec, DX-04, and `configuration` spec, CF-06); default is `text`
 - Every subcommand SHALL support `--help`, printing that subcommand's usage and exiting with code 0
 
 #### Scenario: Help flag exits cleanly
@@ -289,6 +291,14 @@ The system SHALL support the following global flags on the `titi` root command:
 #### Scenario: Subcommand help flag
 - **WHEN** `titi open --help` is invoked
 - **THEN** the usage description for `titi open` is printed to stdout and the process exits with code 0
+
+#### Scenario: Verbose flag enables debug output
+- **WHEN** `titi affected --verbose` is invoked
+- **THEN** debug-level diagnostic events are written to stderr in addition to the normal command output on stdout
+
+#### Scenario: Output flag selects format
+- **WHEN** `titi affected --output json` is invoked
+- **THEN** the affected set is printed as a JSON object to stdout; this is equivalent to the per-command `--output` usage shown in CLI-02
 
 ### Requirement CLI-18: Exit Codes
 

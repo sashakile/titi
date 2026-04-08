@@ -12,6 +12,12 @@ The reference swap capability replaces NuGet binary package references with loca
 
 The system SHALL accept a `SwapRequest` specifying target projects, a `versionPolicy` (STRICT, SEMVER_COMPATIBLE, or FORCE), an `includeTransitive` flag, and an `overrides` set (zero or more `RetainedReason` values to bypass, e.g. `{CYCLE_PREVENTION}`), then produce a `SwapResult` describing every reference decision. An empty `overrides` set means no safety checks are bypassed. The full `RetainedReason` enumeration is: `VERSION_MISMATCH`, `TFM_INCOMPATIBLE`, `NO_LOCAL_SOURCE`, `CYCLE_PREVENTION`, `TRANSITIVE_FLOOR_UNSATISFIED`.
 
+> **Precondition:** SwapRequest processing requires a cycle-free `MonorepoGraph` as input. If the graph contains pre-existing cycles (e.g. loaded from a stale cache), the system SHALL reject the swap request with E002 (CYCLE_DETECTED) before evaluating any individual reference.
+
+> **Invariant — Idempotency:** Applying the same `SwapRequest` to the same `MonorepoGraph` state SHALL produce an identical `SwapResult`. The swap engine SHALL maintain no mutable state between invocations.
+
+> **Invariant — Partition Completeness:** Every reference in the input SHALL appear in exactly one of `SwapResult.swapped` or `SwapResult.retained`. `|swapped| + |retained| = |input references|`.
+
 #### Scenario: Successful source swap
 - **GIVEN** a project references `Orion.Payments` as a NuGet package and a local source project for `Orion.Payments` exists under `sourceRoot`
 - **WHEN** a swap with versionPolicy=STRICT is requested
@@ -88,7 +94,7 @@ The system SHALL accept a local source project as a valid swap target when `vers
 
 ### Requirement RS-06: Transitive Floor Management
 
-The system SHALL ensure that when a `PackageReference` is swapped for a `ProjectReference` (via `ExcludeAssets="All"`), any transitive floor versions established by the original NuGet package are respected by the `ProjectReference`. If the local project's version is lower than a required transitive floor from another path in the graph, the swap SHALL be downgraded to `BINARY` or reported as a conflict.
+The system SHALL ensure that when a `PackageReference` is swapped for a `ProjectReference` (via `ExcludeAssets="All"`), any transitive floor versions established by the original NuGet package are respected by the `ProjectReference`. If the local project's version is lower than a required transitive floor from another path in the graph, the swap SHALL be rejected: the reference is placed in `SwapResult.retained` with `RetainedReason.TRANSITIVE_FLOOR_UNSATISFIED` and a diagnostic noting the unsatisfied floor version.
 
 #### Scenario: Transitive floor higher than local source — pre-swap validation
 - **GIVEN** project A depends on Orion.Core (source candidate) and Orion.Data (binary), and Orion.Data requires Orion.Core >= 2.0.0, but local Orion.Core source is 1.9.0

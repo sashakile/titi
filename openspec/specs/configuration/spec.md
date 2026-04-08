@@ -35,7 +35,7 @@ The system SHALL parse the `TitiConfig` root with required fields `prefix` (stri
 
 ### Requirement CF-03: Cache Configuration
 
-The system SHALL read a `CacheConfig` sub-section specifying `enabled` (boolean, default: `true`), `directory` (default: `.titi/`), `maxAge` (duration, default: `24h`), and `globalTriggers` (list of file paths that force full graph invalidation, defaulting to `["Directory.Build.props", "Directory.Build.targets", "Directory.Packages.props"]`).
+The system SHALL read a `CacheConfig` sub-section specifying `enabled` (boolean, default: `true`), `directory` (default: `.titi/`), `maxAge` (duration string: integer followed by a unit suffix — `s` for seconds, `m` for minutes, `h` for hours, `d` for days; default: `"24h"`), and `globalTriggers` (list of file paths that force full graph invalidation, defaulting to `["Directory.Build.props", "Directory.Build.targets", "Directory.Packages.props"]`).
 
 > **Note:** `cache.directory` is the root artifact directory for ALL titi-generated files — including `graph.cache`, `solutions/`, `manifests/`, and `logs/` — not merely the location of the cache file itself.
 

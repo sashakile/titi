@@ -64,7 +64,7 @@ The system SHALL represent each target framework as a `TFM` constructed from a `
 
 ### Requirement DM-04: Package Reference
 
-The system SHALL represent each NuGet package reference as a `PackageRef` with `packageId`, a parsed `NuGetVersionRange`, and optional `privateAssets` and `excludeAssets` attributes. The `NuGetVersionRange` SHALL be a self-validating value object that rejects invalid NuGet version range syntax at construction time and exposes semantic operations (e.g. `satisfiedBy(version)`, `floor()`, `isExactPin()`).
+The system SHALL represent each NuGet package reference as a `PackageRef` with `packageId`, a parsed `NuGetVersionRange`, and optional `privateAssets` and `excludeAssets` attributes. The `NuGetVersionRange` SHALL be a self-validating value object that rejects invalid NuGet version range syntax at construction time and exposes semantic operations (e.g. `satisfiedBy(version)`, `floor()`, `isExactPin()`). Version range syntax and satisfaction semantics are defined by the [NuGet Package Versioning specification](https://learn.microsoft.com/nuget/concepts/package-versioning#version-ranges) which is normative for this type.
 
 #### Scenario: Standard package reference
 - **WHEN** `<PackageReference Include="Newtonsoft.Json" Version="13.0.1" />` is parsed

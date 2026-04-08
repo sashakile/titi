@@ -40,10 +40,7 @@ The system SHALL implement `Directory.Build.targets` swap logic that, when `InTi
 - **WHEN** `Directory.Build.targets` is evaluated
 - **THEN** the package reference is left as-is (binary) and no ProjectReference is injected
 
-#### Scenario: Manual InTitiContext bypass
-- **GIVEN** a developer manually sets `InTitiContext=true` in a non-titi-generated solution
-- **WHEN** `Directory.Build.targets` is evaluated
-- **THEN** prefix-matched packages are swapped without reference-swap safety checks; this is unsupported and titi provides no guarantees about version compatibility, TFM alignment, or cycle safety in this scenario
+> **Note — Manual InTitiContext bypass:** If a developer manually sets `InTitiContext=true` in a non-titi-generated solution, prefix-matched packages are swapped without reference-swap safety checks. This is unsupported: titi provides no guarantees about version compatibility, TFM alignment, or cycle safety in this scenario.
 
 ### Requirement MB-03: Breaking Property Contract
 

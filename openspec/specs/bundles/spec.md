@@ -10,7 +10,7 @@ The bundles capability manages metapackage definitions that aggregate multiple c
 
 ### Requirement BN-01: Bundle Definition Model
 
-The system SHALL support bundle (metapackage) definitions via `bundles.yaml` at the repo root. Each bundle entry specifies a name, a list of constituent package IDs, a `versionStrategy` (`independent` | `lockstep`, default: `lockstep`), and constituent reference attributes.
+The system SHALL support bundle (metapackage) definitions via `bundles.yaml` at the repo root. Each bundle entry specifies a name, a list of constituent package IDs, a `versionStrategy` (`independent` | `lockstep`, default: `lockstep`), and the following metapackage attributes: `PrivateAssets="none"` on each constituent `PackageReference` (ensuring transitive flow-through) and `IncludeBuildOutput=false` on the bundle `.csproj` (since metapackages produce no assembly).
 
 #### Scenario: Bundle creation
 - **WHEN** `titi bundle create <name>` is invoked with a list of constituent packages

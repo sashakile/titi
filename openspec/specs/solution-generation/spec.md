@@ -60,7 +60,7 @@ The system SHALL write `globalProperties` from `SolutionSpec` into the generated
 
 ### Requirement SG-05: Idempotent Regeneration
 
-The system SHALL regenerate an existing transient solution file if the dependency closure or swap state has changed since the file was last written, and leave it unchanged if nothing has changed.
+The system SHALL regenerate an existing transient solution file if the dependency closure or swap state has changed since the file was last written, as determined by comparing the current set of `SolutionProjectEntry` paths and `SwapResult` fingerprint against those recorded in the existing solution. The system SHALL leave the file unchanged if the comparison produces no differences.
 
 #### Scenario: Regeneration on change
 - **GIVEN** a transient solution already exists for project P

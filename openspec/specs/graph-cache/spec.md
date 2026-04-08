@@ -22,6 +22,8 @@ The system SHALL serialise the `GraphCache` (containing `schemaVersion`, the ful
 
 The system SHALL attempt to load `GraphCache` from `.titi/graph.cache` at the start of any command that requires the graph, and use the cached graph when it is valid and not stale.
 
+> **Definition — Valid Cache:** A `GraphCache` is valid when ALL of the following hold: (1) the file is parseable (not corrupt), (2) `schemaVersion` matches the running binary's expected schema version (see GC-05), (3) `titiVersion` matches the running binary's version (see GC-04), (4) cache age does not exceed `cache.maxAge` (see GC-04), and (5) no global trigger file has a changed fingerprint (see GC-04). A cache that fails any condition is invalid and triggers the appropriate invalidation path (subgraph for condition violations addressable by GC-03, full rebuild for all others).
+
 #### Scenario: Valid cache used
 - **GIVEN** a valid, non-stale `.titi/graph.cache`
 - **WHEN** `titi affected` is invoked
@@ -35,6 +37,8 @@ The system SHALL attempt to load `GraphCache` from `.titi/graph.cache` at the st
 ### Requirement GC-03: Subgraph Invalidation
 
 The system SHALL perform a partial (subgraph) re-evaluation when one or more .csproj files have changed fingerprints, updating only the affected nodes without discarding the entire cached graph. The re-evaluated subgraph consists of the changed node X AND all nodes that transitively depend on X (the downstream dependent cone); X's upstream dependencies are not re-evaluated unless they are also directly changed.
+
+> **Invariant — Invalidation Set:** For a set of changed nodes C, the invalidated set is defined as: `InvalidatedSet(C) = C ∪ { N ∈ V : ∃ x ∈ C such that x ∈ TransitiveDeps(N) }` — that is, C plus every node whose transitive dependency closure includes at least one member of C. All nodes NOT in `InvalidatedSet(C)` SHALL be taken from the cache unchanged.
 
 #### Scenario: Single .csproj modified
 - **GIVEN** project X.csproj has a changed `lastModified` timestamp relative to its cached fingerprint
@@ -109,3 +113,5 @@ The system SHALL write the graph cache atomically by first writing to a temporar
 #### Scenario: Successful atomic rename
 - **WHEN** a cache write completes and `.titi/graph.cache.tmp` is fully written
 - **THEN** the file is atomically renamed to `.titi/graph.cache` and no intermediate state is observable by concurrent readers
+
+> **Concurrency Note:** Atomicity relies on the OS `rename(2)` (POSIX) or `MoveFileEx` with `MOVEFILE_REPLACE_EXISTING` (Windows) guarantee that the target path is updated in a single directory operation. Readers are lock-free: they open `.titi/graph.cache` without acquiring a lock. A reader that opens the file before the rename sees the previous contents; a reader that opens after sees the new contents. No reader observes a partially written file because the `.tmp` path is never visible as `.titi/graph.cache`. This model assumes a local filesystem (not NFS or network shares) where rename atomicity holds.

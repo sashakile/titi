@@ -22,15 +22,33 @@ The system SHALL represent every user-facing error as a `TitiError` with a uniqu
 
 ### Requirement DX-02: Error Code Taxonomy
 
-The system SHALL define and document the following error codes: E001 GRAPH_BUILD_FAILED, E002 CYCLE_DETECTED, E003 VERSION_MISMATCH, E004 TFM_INCOMPATIBLE, E005 NO_LOCAL_SOURCE, E006 CACHE_CORRUPT, E007 MSBUILD_NOT_FOUND, E008 GIT_NOT_AVAILABLE, E009 CONFIG_INVALID, E010 BUILD_FAILED, E011 TEST_FAILED, E012 APICOMPAT_NOT_AVAILABLE. Additional error codes SHALL NOT be added without a corresponding spec update to this taxonomy.
+The system SHALL define and document the following error codes with their severity classification. **Fatal** errors abort the current command immediately; **aggregatable** errors are collected and reported together at the end of the current phase.
+
+| Code | Name | Severity |
+|------|------|----------|
+| E001 | GRAPH_BUILD_FAILED | Fatal |
+| E002 | CYCLE_DETECTED | Fatal |
+| E003 | VERSION_MISMATCH | Aggregatable |
+| E004 | TFM_INCOMPATIBLE | Aggregatable |
+| E005 | NO_LOCAL_SOURCE | Aggregatable |
+| E006 | CACHE_CORRUPT | Fatal |
+| E007 | MSBUILD_NOT_FOUND | Fatal |
+| E008 | GIT_NOT_AVAILABLE | Fatal |
+| E009 | CONFIG_INVALID | Aggregatable |
+| E010 | BUILD_FAILED | Fatal |
+| E011 | TEST_FAILED | Aggregatable |
+| E012 | APICOMPAT_NOT_AVAILABLE | Aggregatable |
+| E999 | INTERNAL_ERROR | Fatal |
+
+Additional error codes SHALL NOT be added without a corresponding spec update to this taxonomy.
 
 #### Scenario: Known error code emitted
 - **WHEN** the graph build fails due to a malformed .csproj
 - **THEN** the error carries code E001
 
 #### Scenario: Unknown error not silenced
-- **WHEN** an unexpected internal exception occurs
-- **THEN** the error is wrapped with a structured TitiError (using the most applicable code) rather than producing an unformatted stack trace in production output
+- **WHEN** an unexpected internal exception occurs that does not map to any specific error code (E001–E012)
+- **THEN** the exception is wrapped in a TitiError with code E999 (INTERNAL_ERROR), the exception message as `message`, and the current `phase` in the context block, rather than producing an unformatted stack trace in production output
 
 #### Scenario: ApiCompat not available
 - **WHEN** `titi version detect` requires API compatibility analysis but `Microsoft.DotNet.ApiCompat.Tool` is not installed or the baseline assembly cannot be obtained
@@ -45,7 +63,7 @@ The system SHALL emit `DiagnosticEvent` records during command execution, each c
 - **THEN** events with level=debug are not written to stdout or stderr
 
 #### Scenario: Verbose mode shows debug events
-- **WHEN** `--verbose` (or equivalent) is passed
+- **WHEN** `--verbose` is passed (see `cli` spec, CLI-17)
 - **THEN** all diagnostic events including level=debug are written to stderr
 
 #### Scenario: Duration captured for slow operations
@@ -71,7 +89,7 @@ The system SHALL support three output formats for diagnostic and command output:
 
 ### Requirement DX-05: Error Aggregation
 
-The system SHALL collect and report all errors encountered during a command rather than aborting on the first error, wherever safe to do so (e.g., validation passes, affected-set computation).
+The system SHALL collect and report all errors encountered during a command rather than aborting on the first error, wherever safe to do so. Specifically: errors with **aggregatable** severity (see DX-02) are collected during a phase and reported together before the command exits. Errors with **fatal** severity abort the current command immediately after emission, as continued execution would operate on invalid state.
 
 #### Scenario: Multiple validation errors shown together
 - **GIVEN** three projects have version validation issues
@@ -79,7 +97,7 @@ The system SHALL collect and report all errors encountered during a command rath
 - **THEN** all three issues are reported before the command exits with code 1
 
 #### Scenario: Fatal errors abort immediately
-- **GIVEN** the graph cache is corrupt (E006)
+- **GIVEN** the graph cache is corrupt (E006, severity: fatal)
 - **WHEN** the graph is loaded
 - **THEN** the command aborts immediately after emitting E006, rather than attempting to continue with a partial graph
 
