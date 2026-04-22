@@ -32,7 +32,7 @@ The system SHALL attempt to load `GraphCache` from `.titi/graph.cache` at the st
 #### Scenario: Corrupt cache triggers full rebuild
 - **GIVEN** `.titi/graph.cache` contains malformed content
 - **WHEN** any command loads the graph
-- **THEN** E006 (CACHE_CORRUPT) is emitted as a warning, the cache is deleted, and the graph is rebuilt from scratch
+- **THEN** E006 (CACHE_CORRUPT) is emitted as a recoverable cache-load diagnostic, the cache is deleted, and the graph is rebuilt from scratch
 
 ### Requirement GC-03: Subgraph Invalidation
 
@@ -76,7 +76,7 @@ The system SHALL reject a cached graph whose `schemaVersion` does not match the 
 #### Scenario: Schema version mismatch
 - **GIVEN** the cache file has `schemaVersion = "1"` but the current titi binary expects `"2"`
 - **WHEN** the cache is loaded
-- **THEN** E006 is emitted and the graph is rebuilt from scratch
+- **THEN** E006 is emitted as a recoverable cache-load diagnostic and the graph is rebuilt from scratch
 
 ### Requirement GC-06: Cache Write Failure Resilience
 

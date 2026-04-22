@@ -112,7 +112,7 @@ The system SHALL validate the loaded config on startup and surface all validatio
 ### Requirement CF-08: External Prerequisites
 
 The system SHALL document and validate the following minimum external tool versions at startup when the corresponding feature is used:
-- **.NET SDK**: >= 8.0 (required for all MSBuild operations)
+- **.NET SDK**: >= 8.0 (minimum supported for all MSBuild operations; repositories MAY pin a newer SDK via `global.json`, and titi SHALL prefer the repo-pinned SDK when present)
 - **Nerdbank.GitVersioning (NBGV)**: >= 3.6 (required for `titi version detect/apply`)
 - **Microsoft.DotNet.ApiCompat.Tool**: >= 8.0 (required for cascading bump API surface analysis)
 - **git**: >= 2.25 (required for affected-set computation)

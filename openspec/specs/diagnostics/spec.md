@@ -8,7 +8,7 @@ The diagnostics capability defines how titi surfaces errors, warnings, and struc
 
 ### Requirement DX-01: Structured Error Model
 
-The system SHALL represent every user-facing error as a `TitiError` with a unique `ErrorCode`, a human-readable `message`, a `context` block (command, target, phase), and a `suggestions` list of actionable remediation steps. Valid values for the `phase` field are: `config-load`, `graph-build`, `cache-load`, `swap`, `solution-gen`, `manifest-gen`, `version-detect`, `build`, `test`.
+The system SHALL represent every user-facing error as a `TitiError` with a unique `ErrorCode`, a human-readable `message`, a `context` block (command, target, phase), and a `suggestions` list of actionable remediation steps. The `phase` field SHALL use a stable titi-defined identifier. Supported values include `command-parse`, `config-load`, `project-resolve`, `graph-build`, `cache-load`, `swap`, `solution-gen`, `manifest-gen`, `cleanup`, `package-manage`, `audit`, `bundle`, `repl`, `version-detect`, `version-validate`, `build`, and `test`; additional command-specific phases MAY be added in a backward-compatible manner when new capabilities are specified.
 
 #### Scenario: Error includes suggestions
 - **GIVEN** error E007 (MSBUILD_NOT_FOUND) is raised
@@ -31,7 +31,7 @@ The system SHALL define and document the following error codes with their severi
 | E003 | VERSION_MISMATCH | Aggregatable |
 | E004 | TFM_INCOMPATIBLE | Aggregatable |
 | E005 | NO_LOCAL_SOURCE | Aggregatable |
-| E006 | CACHE_CORRUPT | Fatal |
+| E006 | CACHE_CORRUPT | Aggregatable |
 | E007 | MSBUILD_NOT_FOUND | Fatal |
 | E008 | GIT_NOT_AVAILABLE | Fatal |
 | E009 | CONFIG_INVALID | Aggregatable |
@@ -97,9 +97,9 @@ The system SHALL collect and report all errors encountered during a command rath
 - **THEN** all three issues are reported before the command exits with code 1
 
 #### Scenario: Fatal errors abort immediately
-- **GIVEN** the graph cache is corrupt (E006, severity: fatal)
-- **WHEN** the graph is loaded
-- **THEN** the command aborts immediately after emitting E006, rather than attempting to continue with a partial graph
+- **GIVEN** `dotnet` is not available on PATH and a command requires MSBuild evaluation (E007, severity: fatal)
+- **WHEN** the command is invoked
+- **THEN** the command aborts immediately after emitting E007, rather than attempting to continue with invalid prerequisites
 
 ### Requirement DX-06: Actionable Suggestion Quality
 

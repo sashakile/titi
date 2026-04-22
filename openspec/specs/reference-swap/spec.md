@@ -10,7 +10,7 @@ The reference swap capability replaces NuGet binary package references with loca
 
 ### Requirement RS-01: Swap Request Processing
 
-The system SHALL accept a `SwapRequest` specifying target projects, a `versionPolicy` (STRICT, SEMVER_COMPATIBLE, or FORCE), an `includeTransitive` flag, and an `overrides` set (zero or more `RetainedReason` values to bypass, e.g. `{CYCLE_PREVENTION}`), then produce a `SwapResult` describing every reference decision. An empty `overrides` set means no safety checks are bypassed. The full `RetainedReason` enumeration is: `VERSION_MISMATCH`, `TFM_INCOMPATIBLE`, `NO_LOCAL_SOURCE`, `CYCLE_PREVENTION`, `TRANSITIVE_FLOOR_UNSATISFIED`.
+The system SHALL accept a `SwapRequest` specifying target projects, a `versionPolicy` (STRICT, SEMVER_COMPATIBLE, or FORCE), an `includeTransitive` flag, and an `overrides` set of bypassable safety checks (zero or more of `VERSION_MISMATCH`, `TFM_INCOMPATIBLE`, `CYCLE_PREVENTION`, `TRANSITIVE_FLOOR_UNSATISFIED`; e.g. `{CYCLE_PREVENTION}`), then produce a `SwapResult` describing every reference decision. An empty `overrides` set means no safety checks are bypassed. The full `RetainedReason` enumeration is: `VERSION_MISMATCH`, `TFM_INCOMPATIBLE`, `NO_LOCAL_SOURCE`, `CYCLE_PREVENTION`, `TRANSITIVE_FLOOR_UNSATISFIED`; `NO_LOCAL_SOURCE` is informational only and is never bypassable because no local source candidate exists.
 
 > **Precondition:** SwapRequest processing requires a cycle-free `MonorepoGraph` as input. If the graph contains pre-existing cycles (e.g. loaded from a stale cache), the system SHALL reject the swap request with E002 (CYCLE_DETECTED) before evaluating any individual reference.
 

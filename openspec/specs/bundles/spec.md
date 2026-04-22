@@ -4,7 +4,7 @@
 
 The bundles capability manages metapackage definitions that aggregate multiple constituent NuGet packages into a single distributable unit, supporting independent or lockstep versioning strategies, constituent visibility rules, and composition validation.
 
-> **Architecture Note — Relationship to Versioning:** The bundles capability defines the bundle data model, composition rules, and validation logic. When `versionStrategy: independent` is configured, the cascading bump algorithm (see spec `versioning`, requirement VN-07) evaluates the bundle's own public API surface to determine whether constituent bumps propagate to the bundle version. The CLI commands for bundle management (`titi bundle create|check|update|lint`) are defined in spec `cli` (CLI-12 through CLI-15).
+> **Architecture Note — Relationship to Versioning:** The bundles capability defines the bundle data model, composition rules, and validation logic. Because a metapackage sets `IncludeBuildOutput=false`, it does not produce an assembly for ApiCompat comparison. When `versionStrategy: independent` is configured, bundle-version propagation is therefore based on changes to the bundle's externally visible dependency contract (constituent membership and constituent version floors recorded in the metapackage), not on assembly-level API comparison. The CLI commands for bundle management (`titi bundle create|check|update|lint`) are defined in spec `cli` (CLI-12 through CLI-15).
 
 ## Requirements
 
@@ -23,5 +23,5 @@ The system SHALL support bundle (metapackage) definitions via `bundles.yaml` at 
 
 #### Scenario: Bundle independent versioning
 - **GIVEN** a bundle with `versionStrategy: independent` in `bundles.yaml`
-- **WHEN** the cascading bump runs (see `versioning` spec, VN-07)
-- **THEN** the bundle's version is bumped only if a constituent's public API surface changed (as detected by ApiCompat on the bundle's own public API); internal-only bumps within constituents do not cascade to the bundle. The bundle has its own changeset files to control explicit version bumps independent of constituent changes.
+- **WHEN** constituent versions are re-evaluated during version planning
+- **THEN** the bundle's version is bumped only if the bundle's externally visible dependency contract changes (for example, a constituent is added or removed, or the metapackage's recorded constituent version floor changes); internal-only bumps within constituents that do not change that contract do not cascade to the bundle. The bundle has its own changeset files to control explicit version bumps independent of constituent changes.

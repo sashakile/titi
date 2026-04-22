@@ -17,7 +17,7 @@ The system SHALL implement `titi open <project>` which generates a transient .sl
 
 #### Scenario: Unknown project
 - **WHEN** `titi open NonExistent.Project` is invoked
-- **THEN** the command exits with code 1 and emits E001 (GRAPH_BUILD_FAILED)
+- **THEN** the command exits with code 1 and emits a structured project-resolution diagnostic indicating the requested project identifier could not be resolved within the constructed graph
 
 #### Scenario: IDE launch failure
 - **GIVEN** `ide.autoOpen = true` and the configured `ide.launchCommand` is not found on PATH
@@ -195,26 +195,26 @@ The system SHALL implement `titi bundle create <name> --constituents LibA,LibB [
 
 ### Requirement CLI-13: titi bundle check
 
-The system SHALL implement `titi bundle check <name>` which reports any version drift between the bundle's declared version and the versions of its constituent packages (see `bundles` spec, BN-01).
+The system SHALL implement `titi bundle check <name>` which reports drift between the constituent version floors recorded in the bundle metapackage and the current versions of its constituent packages, and for `lockstep` bundles also reports drift between the bundle's own version and the highest constituent version (see `bundles` spec, BN-01).
 
 #### Scenario: No drift
-- **GIVEN** all constituents of a bundle are at their expected versions
+- **GIVEN** all constituents of a bundle match the version floors recorded in its metapackage, and a `lockstep` bundle's own version matches the highest constituent version
 - **WHEN** `titi bundle check Orion.Bundle` is invoked
 - **THEN** exit code is 0 and a message confirms the bundle is in sync
 
 #### Scenario: Drift detected
-- **GIVEN** one constituent has been bumped independently of the bundle
+- **GIVEN** one constituent has been bumped independently of the bundle metapackage's recorded version floor
 - **WHEN** `titi bundle check Orion.Bundle` is invoked
 - **THEN** exit code is 1 and the drifted constituent is listed with its current and expected versions
 
 ### Requirement CLI-14: titi bundle update
 
-The system SHALL implement `titi bundle update <name> [--dry-run]` which updates the bundle's version to reflect its current constituent versions (see `bundles` spec, BN-01), optionally previewing changes without writing them.
+The system SHALL implement `titi bundle update <name> [--dry-run]` which updates the metapackage's recorded constituent version floors to reflect current constituent versions and, for `lockstep` bundles, updates the bundle's own version to the highest constituent version (see `bundles` spec, BN-01), optionally previewing changes without writing them.
 
 #### Scenario: Bundle version updated
-- **GIVEN** a bundle with out-of-date version relative to its constituents
+- **GIVEN** a bundle with out-of-date constituent version floors and, if `lockstep`, an out-of-date bundle version relative to its constituents
 - **WHEN** `titi bundle update Orion.Bundle` is invoked
-- **THEN** the bundle's version is updated in `bundles.yaml` and the metapackage `.csproj`, and exit code is 0
+- **THEN** the bundle's recorded constituent version floors are updated in the metapackage `.csproj`, the bundle version is updated when `versionStrategy=lockstep`, and exit code is 0
 
 #### Scenario: Dry run previews without writing
 - **WHEN** `titi bundle update Orion.Bundle --dry-run` is invoked
