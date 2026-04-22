@@ -1,8 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(bd --help 2>/dev/null | head -30)",
-      "Bash(openspec validate:*)"
-    ]
-  }
-}

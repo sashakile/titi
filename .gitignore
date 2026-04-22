@@ -28,6 +28,7 @@ Thumbs.db
 
 # Editor
 .idea/
+.claude/settings.local.json
 *.swp
 *~
 
@@ -37,3 +38,6 @@ Thumbs.db
 # Dolt database files (added by bd init)
 .dolt/
 *.db
+
+# Beads / Dolt files (added by bd init)
+.beads-credential-key
