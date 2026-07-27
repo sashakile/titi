@@ -1,8 +1,8 @@
 ## 1. Pre-implementation (blocking)
-- [ ] 1.1 Resolve Decision 4 (component-graph scope for `static-deps`) — determine whether adapter returns whole-repo or per-component affected sets
-- [ ] 1.2 Confirm Decision 2 (adapter process-lifetime model) against testaruda's actual `AdapterIO` implementation
-- [ ] 1.3 Benchmark titi's CLR process cold-start time (AOT vs. non-AOT) to inform minimum adapter timeout
-- [ ] 1.4 Create beads issues to track the two blocking decisions through resolution, then create implementation issues for each Phase 1 task
+- [x] 1.1 Resolve Decision 4 (component-graph scope for `static-deps`) — RESOLVED: whole-repo (option b) confirmed against testaruda v0.2.3 store/engine architecture (see design.md Decision 4)
+- [x] 1.2 Confirm Decision 2 (adapter process-lifetime model) against testaruda's actual `AdapterIO` implementation — RESOLVED: long-lived model confirmed against `src/adapter.rs` (v0.2.3, commit `34e8db6`)
+- [ ] 1.3 Benchmark titi's CLR process cold-start time (AOT vs. non-AOT) to inform minimum adapter timeout — also review testaruda's `add-coldstart-classification` change outcome if available, to align titi's timeout model with testaruda's coldstart direction
+- [ ] 1.4 Create beads issues to track the two blocking decisions through resolution, then create implementation issues for each Phase 1 task — blocking-decision issues (`titi-euu`, `titi-7qw`) created and closed; external testaruda-side config blocker (`titi-co9`) and SEQ-1 TRX-parser ownership (`titi-2bz`) remain open
 
 ## 2. Core adapter subcommand
 - [ ] 2.1 Implement handshake handler: advertise `titi`, languages `["csharp"]`, granularity `project`, `{symbol_model_complete: false}`
