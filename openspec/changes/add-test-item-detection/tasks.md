@@ -34,7 +34,7 @@
 - [ ] 4.3 Implement confidence scoring: ratio of resolved changed-files to total changed-files, coverage freshness, history depth
 - [ ] 4.4 Implement fallback logic: if confidence below threshold, fall back to project-level selection for affected test projects (select all tests in the project)
 - [ ] 4.5 Implement missed-selection incident recording and promotion
-- [ ] 4.6 Persist run history in `.titi/test-cache/history.jls` (test-outcome, duration, timestamp), with retention (max 100 entries per test) and compaction (>10 MB triggers cleanup)
+- [ ] 4.6 Persist run history in `.titi/test-cache/history.edn` (EDN format: test-id → vector of {:test-id :outcome :duration-ms :timestamp}), with retention (max 100 entries per test) and compaction (>10 MB triggers cleanup)
 
 ## 5. CLI commands
 - [ ] 5.1 Implement `titi tests list <project-pat>` — enumerate test items, optionally filtered by tier
@@ -51,7 +51,7 @@
   - `vstest-path` (string, default: "dotnet")
   - `collect-coverage` (boolean, default: false — set true by `titi tests record`)
   - `coverage-format` (:cobertura | :opencover, default: :cobertura)
-  - `cache-dir` (string, default: ".titi/test-cache" — root for edges/, items/, history.jls)
+  - `cache-dir` (string, default: ".titi/test-cache" — root for edges/, items/, history.edn)
   - `fallback-threshold` (float [0,1], default: 0.7)
   - `always-run-eviction-threshold` (integer, default: 5)
   - `batch-size` (integer, default: 100)

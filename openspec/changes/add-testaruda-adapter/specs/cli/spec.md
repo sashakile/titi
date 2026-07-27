@@ -15,6 +15,11 @@ The system SHALL implement `titi testaruda-adapter` which starts a long-lived ad
 - **WHEN** testaruda spawns `titi testaruda-adapter` as a subprocess
 - **THEN** the adapter prints a JSON handshake response to stdout with name=`titi`, languages=`["csharp"]`, granularity=`project`, and `{symbol_model_complete: false}`, and waits for further commands on stdin
 
+#### Scenario: Graph build fails during handshake
+- **GIVEN** testaruda spawns `titi testaruda-adapter` and the `MonorepoGraph` cannot be built during handshake (e.g. no `.csproj` files found, or `.titi/graph.cache` is corrupt and a fresh build also fails)
+- **WHEN** the adapter attempts the handshake
+- **THEN** the adapter prints a JSON handshake response with an `error` field describing the graph-build failure, does NOT advertise readiness for `static-deps`/`fingerprint`/`run-args`, exits with a non-zero code, and testaruda's core falls back to full-suite selection per TIA-ADAPT-012 (the adapter SHALL NOT emit a successful handshake followed by per-command errors, because testaruda may route commands to an adapter that reported a healthy handshake)
+
 #### Scenario: Discover emits test projects
 - **GIVEN** a monorepo with 3 test projects and 5 library projects
 - **WHEN** testaruda sends a `discover` command

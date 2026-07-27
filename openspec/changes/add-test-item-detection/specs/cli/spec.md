@@ -32,19 +32,33 @@ The system SHALL use exit code 0 for success, 1 for all command failures (includ
 
 The system SHALL implement `titi test-manifest` which generates a Traversal .proj scoped to affected test projects (see `dependency-graph` spec, DG-04/DG-06), organised by tier. When `--select` is provided and test-to-source edges are available, the system SHALL emit a per-test-filtered Traversal by injecting `dotnet test --filter` arguments scoped to the selected test items. When `--select` is provided but no test-to-source edges are available, the system SHALL emit a warn-level diagnostic and fall back to project-level Traversal without filtering. When `--list` is provided, the system SHALL print selected test IDs to stdout one per line instead of emitting a Traversal file.
 
-> **Filter syntax by framework:** The `--filter` expression SHALL be generated based on the detected test framework of the target project. For xUnit, filter by `FullyQualifiedName~testId` (substring match). For NUnit, filter by `FullyQualifiedName==testId` (exact match, NUnit canonical format). For MSTest, filter by `TestCategory` if the test is tagged, otherwise by `FullyQualifiedName~testId`. For mixed-framework projects (`:unknown`), use `dotnet test` per selected test (one invocation per test) as the safe default.
+> **Filter syntax by framework:** The `--filter` expression SHALL be generated based on the detected test framework of the target project. For xUnit, filter by `FullyQualifiedName~FQN` (substring match). For NUnit, filter by `FullyQualifiedName==FQN` (exact match, NUnit canonical format). For MSTest, filter by `TestCategory` if the test is tagged, otherwise by `FullyQualifiedName~FQN`. For mixed-framework projects (`:unknown`), use `dotnet test` per selected test (one invocation per test) as the safe default.
+>
+> **Filter expression derivation (testId → FQN):** VSTest's `--filter` operates on `FullyQualifiedName`, which is `<namespace.class>.<method>` (dot-separated, no assembly prefix, no `::`). A `TestItem.testId` (see `domain-model` spec DM-07) is `<assembly>::<namespace.class>::<method[(args)]>`. The filter expression SHALL be derived from `testId` by: (1) stripping the leading `<assembly>::` component, (2) replacing the remaining `::` separator with `.`, (3) percent-decoding any encoded arguments. The result is the framework's `FullyQualifiedName` form. Example: `testId` `Orion.Core.Tests::Orion.Core.Tests.ParserTests::ParseValidInput` → `FullyQualifiedName` `Orion.Core.Tests.ParserTests.ParseValidInput`.
+>
+> **Parameterized-test row selection fallback:** Some frameworks cannot filter to a *single data row* of a parameterized test via `FullyQualifiedName` alone (e.g. xUnit `~` substring-matches all rows of a `[Theory]`; NUnit `TestCase` row-level filtering has gaps). When a selected `TestItem` is a parameterized row that the framework cannot filter individually, the system SHALL select the entire method (all rows) by filtering on the method's `FullyQualifiedName` without the argument suffix, emit a warn-level diagnostic noting the over-approximation, and proceed. This is consistent with the over-approximation invariant (SAFE-001, see `test-detection` spec TD-04): selecting more tests than strictly necessary is safe; selecting fewer is not.
 >
 > **Filter length safety:** If the generated `--filter` string exceeds 4000 characters, the system SHALL split the test set into batches and generate multiple `dotnet test` invocation entries in the Traversal. The default batch size SHALL be 100 tests per batch, configurable via `TestDetectionConfig.batchSize`. Batches may be run in parallel by the CI executor (Traversal SDK handles parallel execution of `<ProjectReference>` items).
 
 #### Scenario: Per-test filtered manifest
-- **GIVEN** an affected xUnit test project `Orion.Core.Tests` with 10 discovered test items, of which 3 are selected
+- **GIVEN** an affected xUnit test project `Orion.Core.Tests` with 10 discovered test items, of which 3 are selected (non-parameterized `[Fact]` methods)
 - **WHEN** `titi test-manifest --select` is invoked
-- **THEN** the emitted Traversal .proj references `Orion.Core.Tests.csproj` with an additional `--filter "FullyQualifiedName~id1|FullyQualifiedName~id2|FullyQualifiedName~id3"` argument, and only 3 tests run
+- **THEN** the emitted Traversal .proj references `Orion.Core.Tests.csproj` with a `--filter` argument of the form `FullyQualifiedName~Orion.Core.Tests.ParserTests.ParseValidInput|…` (one derived FQN per selected test, joined by `|`), and only the 3 selected tests run
+
+#### Scenario: testId is transformed to FullyQualifiedName for the filter
+- **GIVEN** a selected `TestItem` with `testId` `Orion.Core.Tests::Orion.Core.Tests.ParserTests::ParseValidInput`
+- **WHEN** the `--filter` expression is generated for an xUnit project
+- **THEN** the filter uses `FullyQualifiedName~Orion.Core.Tests.ParserTests.ParseValidInput` (assembly prefix stripped, `::` replaced with `.`, no `::` in the filter value)
+
+#### Scenario: Parameterized row falls back to whole-method selection
+- **GIVEN** a selected `TestItem` is a parameterized row `Orion.Core.Tests::Orion.Core.Tests.ParserTests::Parse("a")` in an xUnit project, and xUnit `FullyQualifiedName~` cannot select a single data row
+- **WHEN** the `--filter` expression is generated
+- **THEN** the filter targets the whole method `FullyQualifiedName~Orion.Core.Tests.ParserTests.Parse` (argument suffix dropped), all rows of `Parse` run, and a warn-level diagnostic notes the over-approximation
 
 #### Scenario: NUnit project uses exact-match filter
-- **GIVEN** an affected NUnit test project with 3 selected test items
+- **GIVEN** an affected NUnit test project with 3 selected non-parameterized test items
 - **WHEN** `titi test-manifest --select` is invoked
-- **THEN** the emitted filter uses `FullyQualifiedName==id1` syntax (exact match) instead of `FullyQualifiedName~id1` syntax (substring match)
+- **THEN** the emitted filter uses `FullyQualifiedName==<derived-FQN>` syntax (exact match) for each selected test
 
 #### Scenario: Unfiltered manifest (no --select)
 - **GIVEN** an affected test project `Orion.Core.Tests`
@@ -108,7 +122,7 @@ The system SHALL implement `titi tests ingest <trx-path> [--coverage cobertura-p
 #### Scenario: Ingest with TRX and coverage
 - **GIVEN** a TRX file with 5 test results and a Cobertura XML file listing 3 source files as covered during the run
 - **WHEN** `titi tests ingest results.trx --coverage coverage.cobertura.xml` is invoked
-- **THEN** 5 run-history entries are written and 15 `TestToSourceEdge` entries are built (5 tests × 3 source files), written to `$(testDetection.cacheDir)/edges/` (edges) and `$(testDetection.cacheDir)/history.jls` (history)
+- **THEN** 5 run-history entries are written and 15 `TestToSourceEdge` entries are built (5 tests × 3 source files), written to `$(testDetection.cacheDir)/edges/` (edges) and `$(testDetection.cacheDir)/history.edn` (history)
 
 #### Scenario: Ingest TRX only
 - **WHEN** `titi tests ingest results.trx` is invoked without `--coverage`

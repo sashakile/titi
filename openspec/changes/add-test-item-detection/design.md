@@ -38,7 +38,7 @@ Cobertura XML from `dotnet test --collect "XPlat Code Coverage"` (via Coverlet) 
 
 ### Decision 3: Consolidated cache layout under `testDetection.cacheDir`
 
-All test-detection caches live under a single configurable root (`testDetection.cacheDir`, default `.titi/test-cache/`) with subdirectories `edges/`, `items/`, and a `history.jls` file. This replaces an earlier design that scattered `test-edges.cache`, `items/`, and `history.jls` across independent paths.
+All test-detection caches live under a single configurable root (`testDetection.cacheDir`, default `.titi/test-cache/`) with subdirectories `edges/`, `items/`, and a `history.edn` file. This replaces an earlier design that scattered `test-edges.cache`, `items/`, and `history.jls` across independent paths; the format was also changed from `.jls` (Julia serialization, incompatible with titi's ClojureCLR runtime) to `.edn`.
 
 - **Rationale:** A single configurable path controls all test cache artifacts, so a user who relocates the cache (e.g. to a CI ephemeral directory) sets one field, not three. It also mirrors the main `cache.directory` convention (CF-03) and makes cleanup (`titi clean`) straightforward.
 - **Alternatives considered:** Separate top-level cache files per artifact — rejected as path proliferation and inconsistent with CF-03.

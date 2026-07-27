@@ -136,20 +136,22 @@ The system SHALL track consecutive passing runs for each test item. A test SHALL
 
 ### Requirement: Run History Persistence (TD-06)
 
-The system SHALL persist per-test run outcomes (pass/fail, duration, timestamp) to `$(testDetection.cacheDir)/history.jls` (default `.titi/test-cache/history.jls`, see `configuration` spec CF-07), enabling cross-session always-run set computation.
+The system SHALL persist per-test run outcomes (pass/fail, duration, timestamp) to `$(testDetection.cacheDir)/history.edn` (default `.titi/test-cache/history.edn`, see `configuration` spec CF-07), enabling cross-session always-run set computation.
+
+> **Serialization format:** The history file SHALL be EDN (`ext:edn`), consistent with titi's ClojureCLR implementation and `titi.config.edn`. Each entry is a map with keys `:test-id`, `:outcome` (`:passed`/`:failed`/`:skipped`), `:duration-ms` (number), and `:timestamp` (ISO-8601). The top-level structure is a map of `test-id` → vector of entries (most-recent-last). This replaces an earlier `.jls` (Julia serialization) proposal that was incompatible with titi's runtime.
 
 > **Retention policy:** To prevent unbounded file growth, the system SHALL retain at most the last 100 run entries per test. The oldest entries are evicted when a new entry pushes the count past this threshold. Additionally, the history file SHALL be compacted (cleaned of evicted entries) whenever its size exceeds 10 MB.
 
 #### Scenario: History recorded
 - **WHEN** `titi tests ingest` processes a TRX file with 3 test results
-- **THEN** 3 run-history entries are written to `$(testDetection.cacheDir)/history.jls`, each with test-id, outcome, duration, and timestamp
+- **THEN** 3 run-history entries are written to `$(testDetection.cacheDir)/history.edn`, each with test-id, outcome, duration, and timestamp
 
 #### Scenario: History loaded
 - **WHEN** a subsequent `titi affected` or `titi test-manifest --select` invocation runs
 - **THEN** the persisted run history is loaded to populate the always-run set
 
 #### Scenario: No history file
-- **WHEN** `$(testDetection.cacheDir)/history.jls` does not exist
+- **WHEN** `$(testDetection.cacheDir)/history.edn` does not exist
 - **THEN** the system treats all discovered tests as having no history (all added to always-run set)
 
 #### Scenario: Retention eviction
