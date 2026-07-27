@@ -2,13 +2,18 @@
 
 ## Purpose
 
-The graph cache capability persists the computed `MonorepoGraph` to `.titi/graph.cache` and implements a tiered invalidation strategy to avoid unnecessary full graph rebuilds.
+The graph cache capability persists the computed `MonorepoGraph` to the graph cache file and implements a tiered invalidation strategy to avoid unnecessary full graph rebuilds.
+
+> **Path convention:** Paths follow `$(cache.directory)` (see `configuration` spec, CF-03); defaults are shown as `.titi/` for readability.
+> **Concurrency reference:** The write-side concurrency protocol (lock file, stale detection, crash recovery) is defined in the `dependency-graph` spec, DG-09. This spec defines the atomic-write mechanism (tmp-then-rename) that operates within the lock already held by the writer.
 
 ## Requirements
 
 ### Requirement GC-01: Cache Persistence
 
-The system SHALL serialise the `GraphCache` (containing `schemaVersion`, the full `MonorepoGraph`, `fingerprints`, and `titiVersion`) to `.titi/graph.cache` after every successful graph construction.
+The system SHALL serialise the `GraphCache` (containing `schemaVersion`, the full `MonorepoGraph`, `fingerprints`, `titiVersion`, and `writtenAt` — an ISO-8601 UTC timestamp recording when the cache was written) to `.titi/graph.cache` after every successful graph construction.
+
+> **Cache age time source:** Cache age (see GC-04) SHALL be computed as `now - GraphCache.writtenAt`, using the embedded timestamp rather than the cache file's filesystem `mtime`, because `mtime` is mutable by non-titi tooling (e.g. `touch`, `rsync`, archive extraction). The `writtenAt` field SHALL be set to the current UTC time at the moment the cache write begins.
 
 #### Scenario: Cache written after build
 - **WHEN** the graph is built successfully
@@ -22,7 +27,7 @@ The system SHALL serialise the `GraphCache` (containing `schemaVersion`, the ful
 
 The system SHALL attempt to load `GraphCache` from `.titi/graph.cache` at the start of any command that requires the graph, and use the cached graph when it is valid and not stale.
 
-> **Definition — Valid Cache:** A `GraphCache` is valid when ALL of the following hold: (1) the file is parseable (not corrupt), (2) `schemaVersion` matches the running binary's expected schema version (see GC-05), (3) `titiVersion` matches the running binary's version (see GC-04), (4) cache age does not exceed `cache.maxAge` (see GC-04), and (5) no global trigger file has a changed fingerprint (see GC-04). A cache that fails any condition is invalid and triggers the appropriate invalidation path (subgraph for condition violations addressable by GC-03, full rebuild for all others).
+> **Definition — Valid Cache:** A `GraphCache` is valid when ALL of the following hold: (1) the file is parseable (not corrupt), (2) `schemaVersion` matches the running binary's expected schema version (see GC-05), (3) `titiVersion` matches the running binary's version (see GC-04), (4) cache age does not exceed `cache.maxAge` (see GC-04), and (5) no global trigger file has a changed fingerprint (see GC-04). A cache that fails any of these five conditions is invalid and triggers a **full rebuild** (see GC-04). Separately, even when the cache is valid per these conditions, individual .csproj fingerprint changes (GC-03) trigger a **subgraph rebuild** of only the affected dependent cone.
 
 #### Scenario: Valid cache used
 - **GIVEN** a valid, non-stale `.titi/graph.cache`
@@ -52,7 +57,9 @@ The system SHALL perform a partial (subgraph) re-evaluation when one or more .cs
 
 ### Requirement GC-04: Full Cache Invalidation
 
-The system SHALL discard the entire cached graph and perform a full rebuild when any global trigger file changes, when the titi tool version changes, or when the cache age exceeds `maxAge`.
+The system SHALL discard the entire cached graph and perform a full rebuild when any global trigger file changes, when the titi tool version changes, when the cache age exceeds `maxAge`, or when the set of `.csproj` files under `repoRoot` differs from the set of project paths recorded in `MonorepoGraph.nodes` (i.e., a project was added to or removed from the monorepo).
+
+> **Rationale — project-set diff:** Subgraph invalidation (GC-03) re-evaluates a changed node plus its downstream dependent cone, but a *newly added* `.csproj` is not present in the cached node set and therefore lies in no cached node's downstream cone. Without a project-set diff trigger, a warm cache would never discover newly added projects until a full rebuild happened for an unrelated reason, silently producing an incomplete graph. The diff SHALL compare canonical absolute paths and SHALL trigger a full rebuild on any add or remove.
 
 #### Scenario: Global trigger file changed
 - **GIVEN** `Directory.Build.props` has a different fingerprint than recorded in the cache
@@ -69,12 +76,22 @@ The system SHALL discard the entire cached graph and perform a full rebuild when
 - **WHEN** the cache is loaded
 - **THEN** the cache is fully invalidated and the graph is rebuilt
 
+#### Scenario: New .csproj added since cache was written
+- **GIVEN** a warm cache and a developer adds `src/Orion.NewLib/Orion.NewLib.csproj` (referenced by `Orion.App`) since the cache was last written
+- **WHEN** the cache is loaded
+- **THEN** the on-disk `.csproj` path set differs from `MonorepoGraph.nodes` keys, the cache is fully invalidated, and the graph is rebuilt from scratch to include `Orion.NewLib`
+
+#### Scenario: .csproj removed since cache was written
+- **GIVEN** a warm cache and a developer deletes `src/Orion.Old/Orion.Old.csproj` since the cache was last written
+- **WHEN** the cache is loaded
+- **THEN** the on-disk `.csproj` path set differs from `MonorepoGraph.nodes` keys, the cache is fully invalidated, and the graph is rebuilt from scratch
+
 ### Requirement GC-05: Schema Version Compatibility
 
 The system SHALL reject a cached graph whose `schemaVersion` does not match the current schema version expected by the running titi binary, treating it as a full invalidation. Unlike the config `schemaVersion` (see `configuration` spec, CF-02) which uses forward-compatible defaults for older schemas, the cache uses strict equality because cache format changes require a full rebuild to ensure data integrity.
 
 #### Scenario: Schema version mismatch
-- **GIVEN** the cache file has `schemaVersion = "1"` but the current titi binary expects `"2"`
+- **GIVEN** the cache file has `schemaVersion = 1` but the current titi binary expects `2`
 - **WHEN** the cache is loaded
 - **THEN** E006 is emitted as a recoverable cache-load diagnostic and the graph is rebuilt from scratch
 

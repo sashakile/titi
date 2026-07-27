@@ -16,7 +16,7 @@ The system SHALL accept a `SwapRequest` specifying target projects, a `versionPo
 
 > **Invariant — Idempotency:** Applying the same `SwapRequest` to the same `MonorepoGraph` state SHALL produce an identical `SwapResult`. The swap engine SHALL maintain no mutable state between invocations.
 
-> **Invariant — Partition Completeness:** Every reference in the input SHALL appear in exactly one of `SwapResult.swapped` or `SwapResult.retained`. `|swapped| + |retained| = |input references|`.
+> **Invariant — Partition Completeness:** Every reference evaluated by the engine SHALL appear in exactly one of `SwapResult.swapped` or `SwapResult.retained`. `|swapped| + |retained| = |evaluated references|`. When `includeTransitive=false`, the evaluated set is the request's direct references. When `includeTransitive=true`, the evaluated set is the closure of references reached by following the dependency graph's topological order from the direct references (direct plus transitive); transitive additions appear in `swapped` or `retained` and are counted in the partition total.
 
 #### Scenario: Successful source swap
 - **GIVEN** a project references `Orion.Payments` as a NuGet package and a local source project for `Orion.Payments` exists under `sourceRoot`
@@ -38,6 +38,16 @@ The system SHALL accept a `SwapRequest` specifying target projects, a `versionPo
 - **WHEN** the swap is attempted
 - **THEN** the reference is retained with `RetainedReason.NO_LOCAL_SOURCE`
 
+#### Scenario: FORCE policy bypasses all safety checks
+- **GIVEN** a local source project exists but has a version mismatch, TFM incompatibility, would create a cycle, and has a transitive floor violation
+- **WHEN** a swap with versionPolicy=FORCE is requested (no individual overrides)
+- **THEN** all four safety checks are bypassed and the swap proceeds; the caller is warned via a diagnostic event for each bypassed check
+
+#### Scenario: FORCE policy still retains NO_LOCAL_SOURCE
+- **GIVEN** a NuGet package has no matching project under `sourceRoot`
+- **WHEN** a swap with versionPolicy=FORCE is requested
+- **THEN** the reference is retained with `RetainedReason.NO_LOCAL_SOURCE` (FORCE does not bypass the requirement that a local source exist)
+
 ### Requirement RS-02: Transitive Swap
 
 The system SHALL recursively swap transitive package dependencies when `SwapRequest.includeTransitive` is true, following the topological order of the dependency graph.
@@ -57,9 +67,9 @@ The system SHALL recursively swap transitive package dependencies when `SwapRequ
 The system SHALL refuse any swap that would introduce a cycle into the project reference graph, retaining the offending reference with `RetainedReason.CYCLE_PREVENTION` and emitting a `CycleReport`.
 
 #### Scenario: Cycle-creating swap refused
-- **GIVEN** swapping X → Y (source) would cause Y to transitively depend on X
+- **GIVEN** swapping X's reference to Y to source mode would close a cycle (the new X→Y edge plus an existing Y→…→X path)
 - **WHEN** the swap is attempted without `CYCLE_PREVENTION` in `overrides`
-- **THEN** X is retained with CYCLE_PREVENTION and a CycleReport is added to SwapResult.cycles
+- **THEN** X's reference to Y is retained with `RetainedReason.CYCLE_PREVENTION` and a `CycleReport` is added to `SwapResult.cycles`
 
 #### Scenario: Override cycle prevention
 - **GIVEN** the same cycle risk as above
@@ -70,6 +80,16 @@ The system SHALL refuse any swap that would introduce a cycle into the project r
 - **GIVEN** includeTransitive=true and swapping B (a direct dependency) is safe, but swapping C (a transitive dependency of B) would introduce a cycle
 - **WHEN** the swap is attempted
 - **THEN** B is swapped to a source reference, C is retained with `RetainedReason.CYCLE_PREVENTION`, and the `SwapResult` has both `swapped` (containing B) and `retained` (containing C) entries populated
+
+#### Scenario: Override version mismatch
+- **GIVEN** the local source project version does not match the requested version range and versionPolicy=STRICT
+- **WHEN** `overrides` includes `VERSION_MISMATCH` on the SwapRequest
+- **THEN** the version check is bypassed and the swap proceeds; the caller is warned via a diagnostic event
+
+#### Scenario: Override TFM incompatibility
+- **GIVEN** the local source project targets `net8.0` but the consuming project requires `net9.0` only
+- **WHEN** `overrides` includes `TFM_INCOMPATIBLE` on the SwapRequest
+- **THEN** the TFM check is bypassed and the swap proceeds; the caller is warned via a diagnostic event
 
 ### Requirement RS-04: MSBuild Context Injection
 
@@ -94,12 +114,12 @@ The system SHALL accept a local source project as a valid swap target when `vers
 
 ### Requirement RS-06: Transitive Floor Management
 
-The system SHALL ensure that when a `PackageReference` is swapped for a `ProjectReference` (via `ExcludeAssets="All"`), any transitive floor versions established by the original NuGet package are respected by the `ProjectReference`. If the local project's version is lower than a required transitive floor from another path in the graph, the swap SHALL be rejected: the reference is placed in `SwapResult.retained` with `RetainedReason.TRANSITIVE_FLOOR_UNSATISFIED` and a diagnostic noting the unsatisfied floor version.
+The system SHALL ensure that when a `PackageReference` is swapped for a `ProjectReference` (via `ExcludeAssets="All"`), any transitive floor versions established by the original NuGet package are respected by the `ProjectReference`. If the local project's version is lower than a required transitive floor from another path in the graph, the swap SHALL be rejected: the reference is placed in `SwapResult.retained` with `RetainedReason.TRANSITIVE_FLOOR_UNSATISFIED` and a diagnostic noting the unsatisfied floor version. This check can be bypassed by including `TRANSITIVE_FLOOR_UNSATISFIED` in the `overrides` set (see RS-01).
 
-#### Scenario: Transitive floor higher than local source — pre-swap validation
+#### Scenario: Transitive floor higher than local source — planning-time rejection
 - **GIVEN** project A depends on Orion.Core (source candidate) and Orion.Data (binary), and Orion.Data requires Orion.Core >= 2.0.0, but local Orion.Core source is 1.9.0
 - **WHEN** the swap for Orion.Core is evaluated
-- **THEN** the swap is rejected before any modification occurs: Orion.Core is placed in `SwapResult.retained` with `RetainedReason.TRANSITIVE_FLOOR_UNSATISFIED` and a diagnostic noting the unsatisfied transitive floor (>= 2.0.0 required, 1.9.0 available)
+- **THEN** the swap is rejected at planning time (the reference-swap engine never mutates `.csproj` files): Orion.Core is placed in `SwapResult.retained` with `RetainedReason.TRANSITIVE_FLOOR_UNSATISFIED` and a diagnostic noting the unsatisfied transitive floor (>= 2.0.0 required, 1.9.0 available)
 
 #### Scenario: Transitive floor satisfied — swap proceeds
 - **GIVEN** project A depends on Orion.Core (source candidate) and Orion.Data (binary), and Orion.Data requires Orion.Core >= 2.0.0, and local Orion.Core source is 2.1.0
@@ -110,3 +130,8 @@ The system SHALL ensure that when a `PackageReference` is swapped for a `Project
 - **GIVEN** package requires `>= 2.0.0` and local source is `3.0.0`
 - **WHEN** versionPolicy=SEMVER_COMPATIBLE
 - **THEN** the reference is retained with VERSION_MISMATCH
+
+#### Scenario: Override transitive floor violation
+- **GIVEN** project A depends on Orion.Core (source candidate) and Orion.Data (binary), and Orion.Data requires Orion.Core >= 2.0.0, but local Orion.Core source is 1.9.0
+- **WHEN** `overrides` includes `TRANSITIVE_FLOOR_UNSATISFIED` on the SwapRequest
+- **THEN** the transitive floor check is bypassed and the swap proceeds; the caller is warned via a diagnostic event

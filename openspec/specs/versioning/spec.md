@@ -93,7 +93,9 @@ The system SHALL require that all projects in the monorepo set `AssemblyVersion`
 
 ### Requirement VN-07: Cascading Bump Algorithm
 
-The system SHALL implement a cascading version bump algorithm that: builds the dependency graph, identifies changed packable projects, determines whether each project's public API surface has changed relative to its last published baseline, topologically propagates bumps only where the API surface has changed, and applies the highest bump type when multiple propagation paths converge.
+The system SHALL implement a cascading version bump algorithm that: builds the dependency graph, identifies changed packable projects (excluding metapackages/bundles — see `bundles` spec, BN-01), determines whether each project's public API surface has changed relative to its last published baseline, topologically propagates bumps only where the API surface has changed, and applies the highest bump type when multiple propagation paths converge.
+
+> **Bundle exception:** Bundle/metapackage projects (identified by `ProjectDescriptor.isMetapackage=true`, see `domain-model` spec, DM-01) set `IncludeBuildOutput=false` and produce no assembly for ApiCompat comparison. When `versionStrategy: independent` is configured, bundle versioning is based on changes to the bundle's externally visible dependency contract (constituent membership and constituent version floors) — not on assembly-level API comparison. When `versionStrategy: lockstep`, the bundle's version tracks the highest constituent version. The cascading algorithm SHALL skip ApiCompat for bundle projects and apply the bundle-specific logic defined in the `bundles` spec (BN-01).
 
 The system SHALL define a `BumpClassification` enum with ordered values `INTERNAL_ONLY` < `ADDITIVE` < `BREAKING`. The algorithm assigns a `BumpClassification` to each changed project and proceeds as follows:
 1. For each changed packable project, compare its current public API surface against the baseline (last published) version. The comparison SHALL detect additive changes (new public types/members) and breaking changes (removed/changed public types/members), producing a `BumpClassification`: `INTERNAL_ONLY` (no public API differences), `ADDITIVE` (new public API only), or `BREAKING` (removed/changed public API).
@@ -106,12 +108,31 @@ The system SHALL define a `BumpClassification` enum with ordered values `INTERNA
 > **Postconditions:** The algorithm SHALL guarantee the following upon completion:
 > 1. **Monotonicity:** For every package P in the version plan, `P.newVersion > P.baselineVersion`.
 > 2. **Termination:** The algorithm processes each node at most once in topological order. For a DAG with |V| nodes, the algorithm completes in at most |V| steps.
-> 3. **Idempotency:** Running the algorithm twice on the same graph state and changeset inputs SHALL produce an identical version plan.
+> 3. **Idempotency:** Running the algorithm twice on the same graph state and changeset inputs SHALL produce an identical version plan, **provided that the configured NuGet feed(s) are reachable in both runs** (baseline assembly acquisition, VN-08, is a network-dependent step whose outcome is NOT part of the deterministic graph state — if a feed is unreachable in one run and reachable in another, the version plan may differ).
 > 4. **Convergence:** When multiple propagation paths reach the same node, the final BumpClassification is the maximum across all incoming paths, applied exactly once.
 
 > **Multi-TFM Behavior:** When a project targets multiple TFMs, ApiCompat SHALL compare assemblies for each TFM independently. The project's `BumpClassification` is the maximum classification across all TFM comparisons. For example, if a change is `ADDITIVE` on `net9.0` and `INTERNAL_ONLY` on `net8.0`, the project receives `ADDITIVE`.
 
 > **Implementation Note:** The reference implementation uses `Microsoft.DotNet.ApiCompat.Tool` (>= 8.0) for API surface comparison. Any tool that can reliably detect additive vs. breaking public API changes between two .NET assemblies satisfies steps 1-4. The system SHALL consume ApiCompat's structured output (suppression XML or exit code) to determine the classification. If ApiCompat output cannot be parsed (unexpected format or version incompatibility), the system SHALL treat the project as `BREAKING` for safety and emit a warn-level diagnostic.
+
+> **Worked example:** Given the graph `A → B → C`, `A → D → C` (A depends on B and D; B and D both depend on C), and a changeset that changes only C with a `BREAKING` classification:
+>
+> ```
+>     A
+>    / \
+>   B   D
+>    \ /
+>     C   (changed, BREAKING)
+> ```
+>
+> | Project | Own changeset? | Incoming propagated bump | Own API classification (vs baseline / vs new dependency version) | Resulting bump | Propagates onward? |
+> |---|---|---|---|---|---|
+> | C | yes (major) | — | BREAKING (vs baseline) | major | yes — major to B and D (step 4) |
+> | B | no | major (from C) | INTERNAL_ONLY (B's own API unchanged by C's new version) | major (receives incoming level per step 5) | no — step 5: own API unchanged, propagation stops at B |
+> | D | no | major (from C) | INTERNAL_ONLY | major | no — propagation stops at D |
+> | A | no | none (B and D both stopped) | — | not bumped | — |
+>
+> **Reading step 5:** "Propagation stops at that node" means the node does not *emit* a new propagation when its own public API is unchanged by the dependency's new version — but the node still *receives* and is bumped by the incoming propagated level. So C (BREAKING) propagates major to B and D; B and D each receive major, are bumped to major, and because their own API is unchanged they do not re-propagate to A. A receives no incoming propagation and is not bumped. The highest-bump-wins rule (step 6) resolves convergence when multiple paths reach a node that *does* propagate.
 
 #### Scenario: Internal-only patch does not propagate
 - **GIVEN** package A has a patch changeset and ApiCompat confirms no public API surface change between the baseline and current build
@@ -147,6 +168,8 @@ The system SHALL obtain baseline assemblies for API surface comparison by restor
 - **WHEN** the cascading bump algorithm runs
 - **THEN** the project is treated as having a fully breaking API change (all public API is new), receiving at minimum a minor bump and propagating accordingly
 
+> **Baseline version for never-published packages:** When no published baseline exists, the baseline version for Monotonicity (see VN-07) SHALL be `0.0.0`. The new version SHALL be the higher of (a) `0.0.0` plus the computed bump (e.g. a minor bump yields `0.1.0`) and (b) the version currently declared in the project's `version.json` (via NBGV). This ensures a never-published project with an explicit `version.json` of `1.0.0` is not regressed to `0.1.0`, while a project with no explicit version still receives a valid first-release version.
+
 #### Scenario: Baseline feed unreachable
 - **GIVEN** the configured NuGet feed is unreachable
 - **WHEN** `titi version detect` runs
@@ -172,14 +195,34 @@ description: Add async overloads to IDataService
 - **WHEN** `titi version detect` runs
 - **THEN** `Orion.Core.Data` receives a minor bump (highest wins) and the version plan reflects this
 
+#### Scenario: Malformed changeset file
+- **GIVEN** a changeset file in `.changesets/` contains an invalid `bump` value (e.g. `critical`) or missing required fields
+- **WHEN** `titi version detect` runs
+- **THEN** the system emits a warn-level diagnostic naming the malformed file and the specific validation error; the malformed changeset is skipped and does not influence the version plan
+
+#### Scenario: All changesets malformed — empty plan warns
+- **GIVEN** all changeset files in `.changesets/` are malformed or fail validation
+- **WHEN** `titi version detect` runs
+- **THEN** the system emits a warning diagnostic noting that no valid changesets were found, and the command exits with code 1
+
+#### Scenario: Changeset package not found in graph
+- **GIVEN** a changeset file specifies `package: NonExistent.Package` which does not match any known `packageId` in the dependency graph
+- **WHEN** `titi version detect` runs
+- **THEN** the system emits a warning diagnostic noting the unmatched package ID; the changeset is skipped
+
+#### Scenario: Changeset targets a project without version.json
+- **GIVEN** a changeset file specifies `package: Orion.Unmanaged` which matches a `packageId` in the graph, but that project has no `version.json` file (not NBGV-managed, see VN-01)
+- **WHEN** `titi version detect` runs
+- **THEN** the system emits a warn-level diagnostic noting the package is not managed by titi version commands (no `version.json`); the changeset is skipped and does not influence the version plan
+
 ### Requirement VN-10: Changeset-Based Workflow
 
 The system SHALL support a changeset-based versioning workflow where each PR includes a changeset file specifying the affected packages and their bump types, and `titi version detect` aggregates changesets to compute final version increments.
 
-#### Scenario: Changeset aggregated
-- **GIVEN** two changesets in the current PR: one specifying `Orion.Core` minor and one specifying `Orion.Core` patch
+#### Scenario: Changeset aggregation with three-way convergence
+- **GIVEN** three changesets in the current PR: one specifying `Orion.Core` minor, one specifying `Orion.Core` patch, and one specifying `Orion.Core` major
 - **WHEN** `titi version detect` runs
-- **THEN** `Orion.Core` receives a minor bump (highest wins)
+- **THEN** `Orion.Core` receives a major bump (highest wins across all three)
 
 #### Scenario: Preview mode (default)
 - **WHEN** `titi version detect` is invoked without `--apply`

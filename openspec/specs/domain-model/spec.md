@@ -24,14 +24,14 @@ The system SHALL represent each .NET project as a `ProjectDescriptor` containing
 #### Scenario: Full project descriptor
 - **GIVEN** a .csproj file with NuGet metadata, TFM list, and package/project references
 - **WHEN** the project is parsed into a descriptor
-- **THEN** the descriptor contains path, packageId, a `SemanticVersion`, a non-empty `TFM[]`, `isPackable`, `isTestProject`, `PackageRef[]`, `ProjectRef[]`, and a properties map
+- **THEN** the descriptor contains path, packageId, a `SemanticVersion`, a non-empty `TFM[]`, `isPackable`, `isTestProject`, `isMetapackage`, `PackageRef[]`, `ProjectRef[]`, and a properties map
 
 #### Scenario: Minimal project descriptor
 - **GIVEN** a .csproj with no NuGet metadata and a single TFM
 - **WHEN** the project is parsed
 - **THEN** packageId and version are absent (not empty strings), and `isPackable` is false
 
-> **Invariant:** `isPackable=true` implies both `packageId` and `version` are present. Absent fields SHALL be represented as the language's native absence value (e.g. `nil`, `None`, `null`), never as empty strings.
+> **Invariant:** `isPackable=true` implies both `packageId` and `version` are present. `isMetapackage=true` implies `isPackable=true` (a metapackage is packable even though it produces no assembly). Absent fields SHALL be represented as the language's native absence value (e.g. `nil`, `None`, `null`), never as empty strings.
 
 ### Requirement DM-02: Semantic Version
 
@@ -47,7 +47,7 @@ The system SHALL represent version strings as a structured `SemanticVersion` wit
 
 #### Scenario: Invalid version string
 - **WHEN** a non-SemVer string such as `"latest"` is parsed
-- **THEN** the system raises a structured error with code E009
+- **THEN** the system raises a structured error with code E014 (VERSION_PARSE_INVALID, see `diagnostics` spec DX-02)
 
 ### Requirement DM-03: Target Framework Moniker
 

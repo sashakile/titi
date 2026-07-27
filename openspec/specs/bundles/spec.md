@@ -16,12 +16,30 @@ The system SHALL support bundle (metapackage) definitions via `bundles.yaml` at 
 - **WHEN** `titi bundle create <name>` is invoked with a list of constituent packages
 - **THEN** an entry is added to `bundles.yaml` with `PrivateAssets="none"` for each constituent and `IncludeBuildOutput=false` on the bundle project
 
-#### Scenario: Bundle lint detects misconfiguration
-- **GIVEN** a bundle whose constituent is missing `PrivateAssets="none"`
-- **WHEN** `titi bundle lint` runs
-- **THEN** exit code is 1 and the missing attribute is reported with the constituent package name
-
 #### Scenario: Bundle independent versioning
 - **GIVEN** a bundle with `versionStrategy: independent` in `bundles.yaml`
 - **WHEN** constituent versions are re-evaluated during version planning
 - **THEN** the bundle's version is bumped only if the bundle's externally visible dependency contract changes (for example, a constituent is added or removed, or the metapackage's recorded constituent version floor changes); internal-only bumps within constituents that do not change that contract do not cascade to the bundle. The bundle has its own changeset files to control explicit version bumps independent of constituent changes.
+
+### Requirement BN-02: Bundle Composition Validation
+
+The system SHALL define the following bundle composition anti-patterns and validate them on demand (via `titi bundle lint`, see `cli` spec CLI-15):
+
+- **Dual-reference anti-pattern:** a consuming project references both a bundle (metapackage) and one of that bundle's constituents directly. The direct constituent reference is redundant because the bundle already carries it; consumers SHOULD reference the bundle alone or the constituent alone, not both.
+- **Stale bundle:** a bundle entry in `bundles.yaml` references a constituent package ID that no longer exists in the monorepo (the constituent project was removed or renamed without updating `bundles.yaml`).
+- **Misconfigured constituent:** a bundle constituent `PackageReference` is missing `PrivateAssets="none"` (required by BN-01 for transitive flow-through).
+
+#### Scenario: Dual-reference anti-pattern
+- **GIVEN** a consuming project references both `Orion.Bundle` and its constituent `Orion.Core` directly
+- **WHEN** bundle composition is validated
+- **THEN** the dual-reference is reported with the consuming project name and the redundant constituent
+
+#### Scenario: Stale bundle
+- **GIVEN** a bundle references a constituent package that no longer exists in the monorepo
+- **WHEN** bundle composition is validated
+- **THEN** the stale bundle entry is reported with the missing constituent name
+
+#### Scenario: Misconfigured constituent
+- **GIVEN** a bundle whose constituent is missing `PrivateAssets="none"`
+- **WHEN** bundle composition is validated
+- **THEN** the missing attribute is reported with the constituent package name

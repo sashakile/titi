@@ -26,9 +26,9 @@ The adapter SHALL be a new `titi testaruda-adapter` subcommand, not a separate b
 
 ### Decision 2: One long-lived adapter process per testaruda invocation, not one spawn per command
 
-The adapter SHALL be a single long-lived process for the duration of one testaruda invocation: it builds (or loads from `.titi/graph.cache`) the `MonorepoGraph` once on `discover` (or handshake), holds it in memory, and answers `static-deps`/`fingerprint`/`run-args` against the same in-memory graph.
+The adapter SHALL be a single long-lived process for the duration of one testaruda invocation: it builds (or loads from `.titi/graph.cache`) the `MonorepoGraph` once during handshake (so the graph is ready before any subsequent command is answered), holds it in memory, and answers `static-deps`/`fingerprint`/`run-args`/`ingest` against the same in-memory graph.
 
-- **Rationale**: titi's own performance model (DG-08) budgets 30 seconds for a cold graph build on a 1000-project repo. If testaruda spawned a fresh process per command, that budget would be paid multiple times per invocation. This is the only way titi's graph-caching investment (DG-09, GC-07) transfers to the adapter role.
+- **Rationale**: titi's own performance model (DG-08) budgets 30 seconds for a cold graph build on a 1000-project repo. If testaruda spawned a fresh process per command, that budget would be paid multiple times per invocation. This is the only way titi's graph-caching investment (DG-09, GC-07) transfers to the adapter role. Building during handshake (rather than lazily on first `discover`) means the handshake response can already account for graph-build failure, and every post-handshake command can assume the graph is ready.
 - **Risk**: This needs confirming against testaruda's actual `AdapterIO` implementation (not just the spec) — see risk row 1.
 - **Blocked**: Must be resolved before Phase 1 implementation starts.
 

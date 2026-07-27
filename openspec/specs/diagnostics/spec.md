@@ -33,21 +33,43 @@ The system SHALL define and document the following error codes with their severi
 | E005 | NO_LOCAL_SOURCE | Aggregatable |
 | E006 | CACHE_CORRUPT | Aggregatable |
 | E007 | MSBUILD_NOT_FOUND | Fatal |
-| E008 | GIT_NOT_AVAILABLE | Fatal |
+| E008 | GIT_ENVIRONMENT_ERROR | Fatal |
 | E009 | CONFIG_INVALID | Aggregatable |
 | E010 | BUILD_FAILED | Fatal |
 | E011 | TEST_FAILED | Aggregatable |
 | E012 | APICOMPAT_NOT_AVAILABLE | Aggregatable |
+| E013 | NBGV_NOT_FOUND | Fatal |
+| E014 | VERSION_PARSE_INVALID | Aggregatable |
 | E999 | INTERNAL_ERROR | Fatal |
 
+> **Relationship to `RetainedReason`:** The swap engine (see `reference-swap` spec, RS-01) uses a separate `RetainedReason` enumeration with overlapping names (`VERSION_MISMATCH`, `TFM_INCOMPATIBLE`, `NO_LOCAL_SOURCE`, `CYCLE_PREVENTION`, `TRANSITIVE_FLOOR_UNSATISFIED`). A `RetainedReason` is a planning-time classification describing why a swap was not performed; it is NOT a `TitiError` and does NOT by itself produce an error code. A `TitiError` is raised only when a bypassable safety check fails AND that check is NOT in the `overrides` set. `RetainedReason.NO_LOCAL_SOURCE` is purely informational (no local source candidate exists), is never bypassable, and never produces E005.
+>
+> | RetainedReason | In `overrides`? | Emitted `TitiError` code |
+> |---|---|---|
+> | `VERSION_MISMATCH` | no | E003 |
+> | `VERSION_MISMATCH` | yes | none (warn diagnostic) |
+> | `TFM_INCOMPATIBLE` | no | E004 |
+> | `TFM_INCOMPATIBLE` | yes | none (warn diagnostic) |
+> | `CYCLE_PREVENTION` | no | E002 (via `CycleReport`) |
+> | `CYCLE_PREVENTION` | yes | none (warn diagnostic) |
+> | `TRANSITIVE_FLOOR_UNSATISFIED` | no | none (diagnostic; no dedicated code) |
+> | `TRANSITIVE_FLOOR_UNSATISFIED` | yes | none (warn diagnostic) |
+> | `NO_LOCAL_SOURCE` | n/a (never bypassable) | none (informational; never E005) |
+>
+> E005 (`NO_LOCAL_SOURCE`) is reserved in the taxonomy for symmetry but is not raised by the swap engine; `titi check` (CLI-08) raises E003/E004 when a project is reported as incompatible.
+
+> **Reserved codes:** E010 (BUILD_FAILED) and E011 (TEST_FAILED) are reserved for future build/test capabilities and SHALL NOT be raised by the current CLI surface.
+
 Additional error codes SHALL NOT be added without a corresponding spec update to this taxonomy.
+
+> **E009 vs E014:** E009 (`CONFIG_INVALID`) is reserved for errors in `titi.config.edn` (missing required fields, invalid values, unsupported `schemaVersion`). E014 (`VERSION_PARSE_INVALID`) is raised when a version string fails to parse into a `SemanticVersion` or `NuGetVersionRange` (see `domain-model` spec, DM-02 and DM-04). The two codes are distinct: a config error is an authoring problem in `titi.config.edn`; a version-parse error is an authoring problem in a `.csproj`/`version.json`/`Directory.Packages.props` value.
 
 #### Scenario: Known error code emitted
 - **WHEN** the graph build fails due to a malformed .csproj
 - **THEN** the error carries code E001
 
 #### Scenario: Unknown error not silenced
-- **WHEN** an unexpected internal exception occurs that does not map to any specific error code (E001–E012)
+- **WHEN** an unexpected internal exception occurs that does not map to any specific error code (E001–E014)
 - **THEN** the exception is wrapped in a TitiError with code E999 (INTERNAL_ERROR), the exception message as `message`, and the current `phase` in the context block, rather than producing an unformatted stack trace in production output
 
 #### Scenario: ApiCompat not available

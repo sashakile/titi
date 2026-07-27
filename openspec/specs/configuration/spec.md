@@ -19,6 +19,10 @@ The system SHALL locate `titi.config.edn` by walking up from the current working
 - **WHEN** no `titi.config.edn` exists anywhere in the directory ancestry
 - **THEN** the system applies built-in defaults (versionPolicy=SEMVER_COMPATIBLE, cache.enabled=true, cache.directory=".titi/") and emits a warn-level diagnostic suggesting the user run `titi init` to create an explicit config file
 
+#### Scenario: Current directory not in a git repository
+- **WHEN** config discovery is attempted and the current working directory is not inside any git repository
+- **THEN** the system applies built-in defaults, emits a warn-level diagnostic suggesting the user run `titi init` inside a git repo, and does NOT raise E008 (GIT_ENVIRONMENT_ERROR) at config-discovery time; E008 is raised later only by graph-dependent commands (see `dependency-graph` spec, DG-01)
+
 ### Requirement CF-02: Core Configuration Fields
 
 The system SHALL parse the `TitiConfig` root with required fields `prefix` (string, e.g. `"Orion."`), `sourceRoot` (path relative to repo root), and `versionPolicy` (STRICT | SEMVER_COMPATIBLE | FORCE, default: SEMVER_COMPATIBLE), and treat all other fields as optional with documented defaults. The config SHALL include a `schemaVersion` field (integer, default: 1). When the loaded `schemaVersion` is higher than the version supported by the running titi binary, the system SHALL emit E009 with a suggestion to upgrade titi. When the loaded `schemaVersion` is lower, the system SHALL apply forward-compatible defaults for any fields added in later schema versions.
@@ -37,7 +41,7 @@ The system SHALL parse the `TitiConfig` root with required fields `prefix` (stri
 
 The system SHALL read a `CacheConfig` sub-section specifying `enabled` (boolean, default: `true`), `directory` (default: `.titi/`), `maxAge` (duration string: integer followed by a unit suffix — `s` for seconds, `m` for minutes, `h` for hours, `d` for days; default: `"24h"`), and `globalTriggers` (list of file paths that force full graph invalidation, defaulting to `["Directory.Build.props", "Directory.Build.targets", "Directory.Packages.props"]`).
 
-> **Note:** `cache.directory` is the root artifact directory for ALL titi-generated files — including `graph.cache`, `solutions/`, `manifests/`, and `logs/` — not merely the location of the cache file itself.
+> **Note:** `cache.directory` (default `".titi/"`) is the root artifact directory for titi-generated files — including `graph.cache`, `solutions/`, `manifests/`, and `logs/`. All specs reference paths under this directory using the default value `.titi/` for readability (avoiding `$(cache.directory)` in every path reference). Implementations SHALL substitute `$(cache.directory)` for every `.titi/` prefix when processing paths at runtime. When `cache.directory` is not configured, the default `.titi/` applies (see CF-01). The default `.titi/` MUST be listed in the repo's `.gitignore`. When `cache.directory` is configured to a non-default value, titi SHALL emit a warn-level diagnostic at startup if that path is not covered by the repo's `.gitignore`, recommending the user add it to prevent titi-generated artifacts from being committed.
 
 #### Scenario: Cache disabled
 - **GIVEN** `cache.enabled = false`
@@ -117,14 +121,19 @@ The system SHALL document and validate the following minimum external tool versi
 - **Microsoft.DotNet.ApiCompat.Tool**: >= 8.0 (required for cascading bump API surface analysis)
 - **git**: >= 2.25 (required for affected-set computation)
 
-When a required tool is missing or below the minimum version, the system SHALL emit the appropriate error code (E007 for .NET SDK, E008 for git, E012 for ApiCompat) with a suggestion including the minimum required version.
+When a required tool is missing or below the minimum version, the system SHALL emit the appropriate error code (E007 for .NET SDK, E008 for git environment, E012 for ApiCompat) with a suggestion including the minimum required version. NBGV is validated alongside the version commands; if NBGV is missing or below version 3.6, the system SHALL emit E013 (NBGV_NOT_FOUND) with a suggestion to install Nerdbank.GitVersioning >= 3.6.
 
 #### Scenario: .NET SDK version too low
 - **GIVEN** the installed .NET SDK is version 6.0
 - **WHEN** any MSBuild-dependent command is invoked
 - **THEN** E007 is emitted with a suggestion to upgrade to .NET SDK >= 8.0
 
-#### Scenario: git version check
+#### Scenario: NBGV tool missing
+- **GIVEN** `Nerdbank.GitVersioning` (NBGV) NuGet package is not referenced or the NBGV CLI tool is below version 3.6
+- **WHEN** any `titi version` command is invoked
+- **THEN** E013 (NBGV_NOT_FOUND) is emitted with a suggestion to install Nerdbank.GitVersioning >= 3.6
+
+#### Scenario: git version too low
 - **GIVEN** git is installed but at version 2.20
 - **WHEN** `titi affected` is invoked
-- **THEN** E008 is emitted with a suggestion to upgrade git to >= 2.25
+- **THEN** E008 (GIT_ENVIRONMENT_ERROR) is emitted with a suggestion to upgrade git to >= 2.25

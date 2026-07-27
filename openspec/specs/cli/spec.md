@@ -4,6 +4,10 @@
 
 The CLI capability defines the command-line interface surface for titi, covering all Phase 1, Phase 2, and Phase 3 commands, their arguments, exit codes, and output behaviour.
 
+> **Path convention:** Paths follow `$(cache.directory)` (see `configuration` spec, CF-03); defaults are shown as `.titi/` for readability.
+
+> **Structural note — capability scope:** This spec is intentionally broad: it owns the *CLI surface* (argument parsing, exit codes, output formatting) for every titi command, even when a command's behaviour is owned by another capability. Where a command's semantics are defined elsewhere, the requirement text defers to that capability (e.g. CLI-11 references `versioning` VN-11; CLI-15 references `bundles` BN-02; CLI-06 references `dependency-graph` DG-04/DG-06). Only CLI-wide concerns (global flags CLI-17, exit codes CLI-18, output format) are owned outright here. This keeps a single discovery point for the CLI surface while keeping behaviour co-located with its capability. Per the phasing in `project.md`, command groups are prioritised by phase, not by their order in this file.
+
 ## Requirements
 
 ### Requirement CLI-01: titi open
@@ -26,7 +30,7 @@ The system SHALL implement `titi open <project>` which generates a transient .sl
 
 ### Requirement CLI-02: titi affected
 
-The system SHALL implement `titi affected` which computes the `AffectedSet` (see `dependency-graph` spec, DG-04) from current git changes relative to the configured base branch and prints affected project paths, one per line by default.
+The system SHALL implement `titi affected [--from <ref>]` which computes the `AffectedSet` (see `dependency-graph` spec, DG-04) from git changes relative to the configured base branch (or the specified `--from` ref when provided) and prints affected project paths, one per line by default.
 
 #### Scenario: Changes present
 - **GIVEN** one or more modified source files belonging to tracked projects
@@ -40,6 +44,10 @@ The system SHALL implement `titi affected` which computes the `AffectedSet` (see
 #### Scenario: JSON output
 - **WHEN** `titi affected --output json` is invoked
 - **THEN** a JSON object matching the `AffectedSet` schema is printed to stdout
+
+#### Scenario: From ref flag
+- **WHEN** `titi affected --from v2.0.0` is invoked
+- **THEN** only changes introduced since the `v2.0.0` git ref are considered when computing the affected set
 
 ### Requirement CLI-03: titi clean
 
@@ -118,7 +126,7 @@ The system SHALL implement `titi pkg <add|remove|upgrade>` subcommands to manage
 
 ### Requirement CLI-08: titi check
 
-The system SHALL implement `titi check <project>` which checks whether the specified packable project's current local source version is compatible with all consuming projects in the monorepo. A project is "compatible" when: (1) its version satisfies every consumer's version range (or CPM floor), AND (2) its target framework set has a non-empty intersection with each consumer's target framework set. The command reports each consumer with its compatibility status.
+The system SHALL implement `titi check <project>` which checks whether the specified packable project's current local source version is compatible with all consuming projects in the monorepo. A project is "compatible" when: (1) its version satisfies every consumer's version range (or CPM floor), AND (2) its target framework set is a superset of each consumer's target framework set (the candidate SHALL support every TFM that the consumer targets). The command reports each consumer with its compatibility status.
 
 #### Scenario: Compatible package
 - **GIVEN** all consumers of `Orion.Core` are compatible with its current version
@@ -164,25 +172,25 @@ The system SHALL implement `titi version detect [--from <tag>] [--apply]` which 
 
 ### Requirement CLI-11: titi version validate
 
-The system SHALL implement `titi version validate [--fix]` which runs the version validation checks (see `versioning` spec, VN-11) covering AssemblyVersion patterns, CPM configuration, lock files, and SDK version pinning. With `--fix`, auto-correctable violations are applied in place.
+The system SHALL implement `titi version validate [--fix]` as the CLI surface for the version validation checks defined in the `versioning` spec (VN-11). The command SHALL exit per CLI-18 (0 on success, 1 when any violation is found). With `--fix`, auto-correctable violations are applied in place per VN-11; the set of checks, violation reporting, and remediation hints are owned by VN-11 and are not redefined here.
 
 #### Scenario: All checks pass
 - **GIVEN** a correctly configured monorepo
 - **WHEN** `titi version validate` is invoked
-- **THEN** exit code is 0 and a summary confirms all checks passed
+- **THEN** exit code is 0 and a summary confirms all checks passed (per VN-11)
 
 #### Scenario: Violations reported
 - **GIVEN** one project has an incorrect AssemblyVersion pattern and `global.json` is absent
 - **WHEN** `titi version validate` is invoked
-- **THEN** exit code is 1 and each violation is listed with its file location and a remediation hint
+- **THEN** exit code is 1 and each violation is listed with its file location and a remediation hint (per VN-11)
 
 #### Scenario: Fix applies safe corrections
 - **WHEN** `titi version validate --fix` is invoked with auto-correctable violations present
-- **THEN** safe fixes (e.g. correcting `AssemblyVersion` to `{Major}.0.0.0`) are written in place and non-auto-correctable violations are reported without modification
+- **THEN** safe fixes (e.g. correcting `AssemblyVersion` to `{Major}.0.0.0`) are written in place per VN-11 and non-auto-correctable violations are reported without modification
 
 ### Requirement CLI-12: titi bundle create
 
-The system SHALL implement `titi bundle create <name> --constituents LibA,LibB [--strategy independent|lockstep]` which scaffolds a metapackage `.csproj` referencing the specified constituent packages and registers the bundle in `bundles.yaml` (see `bundles` spec, BN-01).
+The system SHALL implement `titi bundle create <name> --constituents LibA,LibB [--strategy independent|lockstep]` which scaffolds a metapackage `.csproj` referencing the specified constituent packages and registers the bundle in `bundles.yaml` (see `bundles` spec, BN-01). When `--strategy` is omitted, `versionStrategy` defaults to `lockstep` per `bundles` BN-01.
 
 #### Scenario: Bundle scaffolded
 - **GIVEN** `titi bundle create Orion.Bundle --constituents Orion.Core,Orion.Data` is invoked
@@ -222,24 +230,24 @@ The system SHALL implement `titi bundle update <name> [--dry-run]` which updates
 
 ### Requirement CLI-15: titi bundle lint
 
-The system SHALL implement `titi bundle lint [--all]` which scans bundle definitions (see `bundles` spec, BN-01) for dual-reference anti-patterns (a consumer referencing both a bundle and one of its constituents directly) and stale bundles (constituents removed from the monorepo).
+The system SHALL implement `titi bundle lint [--all]` as the CLI surface for the bundle composition validation rules defined in the `bundles` spec (BN-02). When invoked, it scans bundle definitions for the anti-patterns owned by BN-02 (dual-reference, stale bundles, misconfigured constituents) and reports findings per CLI-18. `--all` scans every bundle in `bundles.yaml`; without `--all`, only bundles referenced by the current change set are scanned. The validation rules, anti-pattern definitions, and reporting content are owned by BN-02 and are not redefined here.
 
 #### Scenario: Dual-reference anti-pattern detected
-- **GIVEN** a consuming project references both `Orion.Bundle` and its constituent `Orion.Core` directly
+- **GIVEN** a consuming project references both `Orion.Bundle` and its constituent `Orion.Core` directly (BN-02 dual-reference anti-pattern)
 - **WHEN** `titi bundle lint` is invoked
-- **THEN** exit code is 1 and the dual-reference is reported with the consuming project name and the redundant constituent
+- **THEN** exit code is 1 and the dual-reference is reported with the consuming project name and the redundant constituent (per BN-02)
 
 #### Scenario: Stale bundle detected
-- **GIVEN** a bundle references a constituent package that no longer exists in the monorepo
+- **GIVEN** a bundle references a constituent package that no longer exists in the monorepo (BN-02 stale bundle anti-pattern)
 - **WHEN** `titi bundle lint --all` is invoked
-- **THEN** the stale bundle entry is reported with the missing constituent name and exit code is 1
+- **THEN** the stale bundle entry is reported with the missing constituent name (per BN-02) and exit code is 1
 
 ### Requirement CLI-16: titi repl
 
 The system SHALL implement `titi repl` which launches an interactive build REPL allowing the user to explore the dependency graph using a defined command set. The REPL SHALL support the following commands:
 - `deps <project>`: list direct dependencies of a project
 - `dependents <project>`: list direct dependents of a project
-- `path <from> <to>`: show the shortest dependency path between two projects
+- `path <from> <to>`: show the shortest dependency path between two projects (following *dependency* edges: each subsequent node is depended on by the previous one, i.e. `from → … → to` means `from` depends on each subsequent node)
 - `info <project>`: display the project's `ProjectDescriptor` fields (version, TFMs, packability, depth)
 - `affected [--from <ref>]`: compute and display the affected set from current or specified git changes
 - `tree <project> [--depth N]`: display the dependency tree rooted at a project, limited to N levels (default: 3)
@@ -258,7 +266,7 @@ The system SHALL implement `titi repl` which launches an interactive build REPL 
 - **THEN** the REPL prints the three dependency project paths, one per line
 
 #### Scenario: Path query
-- **GIVEN** the REPL is running and a path exists from `Orion.Api` to `Orion.Core` via `Orion.Data`
+- **GIVEN** the REPL is running and a dependency path exists from `Orion.Api` to `Orion.Core` via `Orion.Data` (i.e. `Orion.Api` depends on `Orion.Data`, which depends on `Orion.Core`)
 - **WHEN** the user enters `path Orion.Api Orion.Core`
 - **THEN** the REPL prints `Orion.Api → Orion.Data → Orion.Core`
 

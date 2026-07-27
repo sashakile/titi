@@ -35,7 +35,7 @@ graph analysis, cascading version bumps, and test impact analysis.
   NuGet graph resolution; inject `ProjectReference` via conditional MSBuild when
   `$(InTitiContext)` is true
 - **Naming convention**: NuGet package ID must map deterministically to a
-  filesystem path (e.g., `Company.Core.Data` → `src/Company.Core.Data/`)
+  filesystem path (e.g., `Orion.Core.Data` → `src/Orion.Core.Data/`)
 - **AssemblyVersion**: always `{Major}.0.0.0` to prevent runtime binding failures
 - **CPM + transitive pinning**: `CentralPackageTransitivePinningEnabled=true`;
   `RestoreLockedMode=true` in CI only
@@ -57,6 +57,35 @@ graph analysis, cascading version bumps, and test impact analysis.
 - `prek` runs `trailing-whitespace`, `end-of-file-fixer`, `check-yaml`,
   `check-xml`, `check-added-large-files` on every commit
 - Commit workflow: use the `commit` skill (via wai)
+
+## Phasing
+
+titi is delivered in three phases. Specs and changes reference these phase
+labels normatively; an item's phase indicates its implementation priority and
+whether it is in scope for the current milestone.
+
+- **Phase 1 — Core orchestration (in scope):** The capabilities required for
+  titi to function as a standalone .NET monorepo orchestrator at project-level
+  granularity. Covers `domain-model`, `dependency-graph`, `reference-swap`,
+  `configuration`, `solution-generation`, `graph-cache`, `msbuild-integration`,
+  `versioning`, `bundles`, `diagnostics`, and the core `cli` commands
+  (`open`, `affected`, `clean`, `cache warm`, `build-manifest`, `test-manifest`,
+  `pkg`, `check`, `audit`, `version detect|validate`, `bundle create|check|update|lint`).
+  Test-impact analysis operates at project granularity (whole test assemblies).
+- **Phase 2 — Test-item-level detection (planned):** The `test-detection`
+  capability and `titi tests list|ingest|record` commands, per-test selection via
+  `test-manifest --select`, safety invariants (always-run set, confidence
+  fallback), and exit codes 10/20. Tracked by the `add-test-item-detection`
+  change. This phase is a prerequisite for the testaruda adapter's deferred
+  Phase 2 (method-level granularity).
+- **Phase 3 — Integrations & exploration (future):** `titi repl` (CLI-16) and
+  `titi testaruda-adapter` (CLI-19). These are additive surfaces that build on
+  Phase 1 (and, for adapter method-level granularity, Phase 2) without altering
+  existing commands.
+
+A requirement's phase is determined by the capability it belongs to. Phase 2
+and Phase 3 requirements SHALL NOT be implemented until their preceding phase's
+relevant capabilities are landed.
 
 ## Domain Context
 
