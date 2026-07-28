@@ -86,6 +86,12 @@ public static class ConfigLoader
         // Strip comments
         raw = Regex.Replace(raw, @";[^\n]*", "");
 
+
+        // Basic EDN validation: must start with { and end with }
+        var trimmed = raw.Trim();
+        if (!trimmed.StartsWith('{') || !trimmed.EndsWith('}'))
+            throw new FormatException("Config file must contain a valid EDN map");
+
         var prefix = ExtractString(raw, ":prefix");
         var sourceRoot = ExtractString(raw, ":source-root") ?? ExtractString(raw, ":sourceRoot") ?? "src/";
         var versionPolicyStr = ExtractKeyword(raw, ":version-policy") ?? ExtractKeyword(raw, ":versionPolicy") ?? "semver-compatible";
