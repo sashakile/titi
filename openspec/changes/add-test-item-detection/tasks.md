@@ -22,7 +22,7 @@
 - [ ] 3.1 Implement Cobertura XML coverage parser for `dotnet test --collect "XPlat Code Coverage"` output
 - [ ] 3.2 Implement `build_edges_from_coverage(cobertura-xml)` → vector of TestToSourceEdge (one per test×source-file pair)
 - [x] 3.3 Implement `build_edges_from_trx(trx-path)` → per-test duration and outcome  (Coverage.Parser.ParseTrx → TrxTestResult[]; per-test outcome + duration + error, TD-02)
-- [ ] 3.4 Wire coverage and TRX together: invoke tests once, collect both outputs, build edge set
+- [x] 3.4 Wire coverage and TRX together: invoke tests once, collect both outputs, build edge set  (EdgeBuilder.BuildFromRun(trxResults, coveredSources); file-level cross-product, From=testName To=sourceFile, Origin=Static weight=1_000_000; skips NotExecuted tests)
 - [ ] 3.5 Store test-to-source edges in `.titi/test-cache/edges/` with source file fingerprints
 - [ ] 3.6 Incremental edge update: only re-run tests whose source-fingerprint changed
 - [ ] 3.7 Fallback when no coverage: treat all test items in an affected project as selected (project-level fallback, matching current behavior)
@@ -39,7 +39,7 @@
 ## 5. CLI commands
 - [ ] 5.1 Implement `titi tests list <project-pat>` — enumerate test items, optionally filtered by tier
 - [ ] 5.2 Implement `titi tests ingest <trx-path> [--coverage <cobertura-path>]` — parse results and update edge cache; TRX-Cobertura correlation produces per-test×source-file edges
-- [ ] 5.3 Implement `titi tests record` — run all test projects with coverage, ingest results, build edge index (ci-performed)
+- [x] 5.3 Implement `titi tests record` — run all test projects with coverage, ingest results, build edge index (ci-performed)  (Core.TestsRecordCommand: graph->test-projects->dotnet test --collect XPlat --logger trx->ArtifactLocator->ParseTrx+ParseCobertura->EdgeBuilder->.titi/test-cache/edges/; content-based fingerprint incremental skip)
 - [ ] 5.4 Upgrade `titi test-manifest` with `--select` flag: when enabled, emit per-test-filtered Traversal using `dotnet test --filter`; framework-aware filter syntax (xUnit `~`, NUnit `==`, MSTest `TestCategory` or `~`); batch splitting when filter >4000 chars
 - [ ] 5.5 Upgrade `titi test-manifest` with `--list` flag: print selected test IDs instead of emitting a Traversal file
 - [ ] 5.6 Upgrade `titi affected` to include `selectedTests` and `confidence` in `--output json` when test edges are available

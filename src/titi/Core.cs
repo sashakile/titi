@@ -259,10 +259,155 @@ public static class Program
 
     static int TestsRecordCommand()
     {
-        Console.Error.WriteLine("Running all test projects with coverage...");
-        Console.Error.WriteLine("Note: titi tests record requires test projects to be configured.");
-        Console.Error.WriteLine("Run 'titi tests list <project>' for individual projects.");
+        var (graph, config, exitCode) = BuildGraphForRepo();
+        if (graph == null || exitCode != 0)
+            return exitCode;
+
+        var repoRoot = Environment.CurrentDirectory;
+        var titiDir = Path.Combine(repoRoot, ".titi");
+        var cacheDir = Path.Combine(titiDir, "test-cache");
+        var edgesDir = Path.Combine(cacheDir, "edges");
+        var runsRoot = Path.Combine(cacheDir, "runs");
+        var fingerprintPath = Path.Combine(cacheDir, "fingerprint");
+
+        // Incremental recording (CLI-22): if the edge cache is fresh relative to
+        // the current source-file fingerprint, skip re-running tests and exit 0.
+        var currentFingerprint = ComputeSourceFingerprint(graph);
+        if (Directory.Exists(edgesDir)
+            && File.Exists(fingerprintPath)
+            && File.ReadAllText(fingerprintPath) == currentFingerprint)
+        {
+            Console.Error.WriteLine("Edge cache is fresh — no tests re-run.");
+            return 0;
+        }
+
+        var testProjects = graph.Nodes.Values
+            .Where(n => n.Project.IsTestProject)
+            .Select(n => n.Project)
+            .ToArray();
+
+        if (testProjects.Length == 0)
+        {
+            Console.Error.WriteLine("No test projects found in the graph.");
+            return 0;
+        }
+
+        Console.Error.WriteLine($"Recording {testProjects.Length} test project(s) with coverage...");
+        Directory.CreateDirectory(runsRoot);
+        Directory.CreateDirectory(edgesDir);
+
+        var allEdges = new List<TestToSourceEdge>();
+        var failures = 0;
+        foreach (var plan in RecordPlanner.PlanTestRuns(testProjects, runsRoot))
+        {
+            Directory.CreateDirectory(plan.ResultsDir);
+            try
+            {
+                Console.Error.WriteLine($"  dotnet {plan.Arguments}");
+                var (ranOk, stdout, stderr) = RunDotnet(plan.Arguments, repoRoot);
+                if (!ranOk)
+                {
+                    failures++;
+                    Console.Error.WriteLine($"  test run failed for {plan.ProjectPath}: {stderr.Split('\n').FirstOrDefault()}");
+                    continue;
+                }
+
+                var (trxPath, coberturaPath) = ArtifactLocator.FindArtifacts(plan.ResultsDir);
+                if (trxPath == null)
+                {
+                    failures++;
+                    Console.Error.WriteLine($"  no TRX produced for {plan.ProjectPath}");
+                    continue;
+                }
+
+                var trxResults = titi.Coverage.Parser.ParseTrx(File.ReadAllText(trxPath));
+                string[] coveredSources = [];
+                if (coberturaPath != null)
+                {
+                    var coberturaEdges = titi.Coverage.Parser.ParseCobertura(
+                        File.ReadAllText(coberturaPath), repoRoot);
+                    coveredSources = coberturaEdges.Select(e => e.To).Distinct().ToArray();
+                }
+
+                allEdges.AddRange(EdgeBuilder.BuildFromRun(trxResults, coveredSources));
+            }
+            finally
+            {
+                // Clean up the transient results dir whether the run succeeded,
+                // failed, or produced no artifacts — never leak run state.
+                try { Directory.Delete(plan.ResultsDir, recursive: true); } catch { }
+            }
+        }
+
+        // Persist the edge index (TD-03: .titi/test-cache/edges/).
+        var edgesPath = Path.Combine(edgesDir, "edges.edn");
+        File.WriteAllText(edgesPath,
+            System.Text.Json.JsonSerializer.Serialize(
+                allEdges.Select(e => new { e.From, e.To, e.Origin, e.Weight, e.LineRanges }),
+                new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
+        File.WriteAllText(fingerprintPath, currentFingerprint);
+
+        Console.Error.WriteLine($"Wrote {allEdges.Count} edges to {edgesPath}");
+        if (failures > 0)
+        {
+            Console.Error.WriteLine($"{failures} test project(s) failed during recording.");
+            return 1;
+        }
         return 0;
+    }
+
+    // Content fingerprint over every project's .csproj and source files (.cs)
+    // so incremental recording detects in-place source edits, not just
+    // structural (add/remove) changes (CLI-22 incremental scenario).
+    static string ComputeSourceFingerprint(MonorepoGraph graph)
+    {
+        using var sha = System.Security.Cryptography.SHA256.Create();
+        var hashes = new List<string>();
+        foreach (var node in graph.Nodes.Values.OrderBy(n => n.Project.Path, StringComparer.Ordinal))
+        {
+            var projDir = Path.GetDirectoryName(node.Project.Path) ?? "";
+            hashes.Add(HashFile(sha, node.Project.Path));
+            foreach (var src in Directory.EnumerateFiles(projDir, "*.cs", SearchOption.AllDirectories)
+                         .OrderBy(p => p, StringComparer.Ordinal))
+            {
+                hashes.Add(HashFile(sha, src));
+            }
+        }
+        var bytes = System.Text.Encoding.UTF8.GetBytes(string.Join('\n', hashes));
+        return Convert.ToHexString(sha.ComputeHash(bytes));
+    }
+
+    static string HashFile(System.Security.Cryptography.SHA256 sha, string path)
+    {
+        try
+        {
+            using var fs = File.OpenRead(path);
+            return Convert.ToHexString(sha.ComputeHash(fs));
+        }
+        catch
+        {
+            return $"missing:{path}";
+        }
+    }
+
+    static (bool Ok, string Stdout, string Stderr) RunDotnet(string arguments, string workingDir)
+    {
+        var psi = new System.Diagnostics.ProcessStartInfo
+        {
+            FileName = "dotnet",
+            Arguments = arguments,
+            WorkingDirectory = workingDir,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+        };
+        using var proc = System.Diagnostics.Process.Start(psi);
+        if (proc == null)
+            return (false, "", "failed to start dotnet");
+        var stdout = proc.StandardOutput.ReadToEnd();
+        var stderr = proc.StandardError.ReadToEnd();
+        proc.WaitForExit(600_000); // 10 min per project
+        return (proc.ExitCode == 0, stdout, stderr);
     }
 
     static int CleanCommand()

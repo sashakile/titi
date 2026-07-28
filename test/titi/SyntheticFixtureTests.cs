@@ -83,4 +83,38 @@ public class SyntheticFixtureTests
 
         Assert.True(proc.ExitCode == 0, $"Tests failed: {stderr}");
     }
+
+    // CLI-22: `titi tests record` runs all test projects with coverage, ingests
+    // TRX + Cobertura, and builds the edge index in .titi/test-cache/edges/.
+    [Fact(Skip = "Slow (runs dotnet test with coverage); run with: dotnet test --filter Category=Integration")]
+    public void TitiTestsRecord_AgainstSyntheticFixture_BuildsEdgeIndex()
+    {
+        // Clean any prior titi state so this is a first-invocation recording.
+        var titiDir = Path.Combine(FixtureDir, ".titi");
+        if (Directory.Exists(titiDir)) Directory.Delete(titiDir, recursive: true);
+
+        var psi = new ProcessStartInfo
+        {
+            FileName = "dotnet",
+            Arguments = $"run --project \"{ProjectPath}\" -- tests record",
+            WorkingDirectory = FixtureDir,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+        };
+
+        using var proc = Process.Start(psi);
+        Assert.NotNull(proc);
+        var stdout = proc.StandardOutput.ReadToEnd();
+        var stderr = proc.StandardError.ReadToEnd();
+        proc.WaitForExit(300000);
+
+        Assert.True(proc.ExitCode == 0, $"Exit code {proc.ExitCode}: {stderr}");
+
+        var edgesPath = Path.Combine(titiDir, "test-cache", "edges", "edges.edn");
+        Assert.True(File.Exists(edgesPath), $"edge index not found at {edgesPath}");
+
+        var fingerprintPath = Path.Combine(titiDir, "test-cache", "fingerprint");
+        Assert.True(File.Exists(fingerprintPath), "fingerprint not written for incremental skip");
+    }
 }
