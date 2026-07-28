@@ -3,34 +3,37 @@
 namespace titi.TestCli;
 
 using System.Text.Json;
+using titi.Serialization;
 
 public static class Formatter
 {
     public static string FormatTestItems(TestItem[] items)
     {
-        var list = items.Select(i => new
-        {
-            testId = i.TestId,
-            className = i.ClassName,
-            methodName = i.MethodName,
-            framework = i.Framework.ToString().ToLower(),
-            tier = i.Tier.ToString().ToLower(),
-            sourceFile = i.SourceFile,
-        });
+        var list = items.Select(i => new TestItemEntry(
+            TestId: i.TestId,
+            ClassName: i.ClassName,
+            MethodName: i.MethodName,
+            Framework: i.Framework.ToString().ToLower(),
+            Tier: i.Tier.ToString().ToLower(),
+            SourceFile: i.SourceFile
+        )).ToArray();
 
-        return JsonSerializer.Serialize(new { tests = list }, new JsonSerializerOptions { WriteIndented = true });
+        var wrapper = new TestItemList(list);
+        return JsonSerializer.Serialize(wrapper, TitiJsonContext.Default.TestItemList);
     }
 
     public static string FormatAffectedUpgrade(AffectedSet affected)
     {
-        var selectedTests = affected.SelectedTests.Select(st => new
-        {
-            testId = st.TestId,
-            selected = st.Selected,
-            reasons = st.Reasons.Select(r => new { kind = r.Kind, description = r.Description }),
-            confidence = st.Confidence,
-            fallbackReason = st.FallbackReason?.ToString()
-        }).ToArray();
+        var selectedTests = affected.SelectedTests.Select(st => new SelectedTestEntry(
+            TestId: st.TestId,
+            Selected: st.Selected,
+            Reasons: st.Reasons.Select(r => new SelectionReasonEntry(
+                Kind: r.Kind,
+                Description: r.Description
+            )).ToArray(),
+            Confidence: st.Confidence,
+            FallbackReason: st.FallbackReason?.ToString()
+        )).ToArray();
 
         var allResolved = affected.ChangedFiles.Length > 0
             ? affected.DirectlyAffected.Length
@@ -39,16 +42,21 @@ public static class Formatter
             ? (double)allResolved / affected.ChangedFiles.Length
             : 1.0;
 
-        var output = new
-        {
-            changedFiles = affected.ChangedFiles,
-            directlyAffected = affected.DirectlyAffected.Select(p => new { p.PackageId, p.Path }),
-            transitivelyAffected = affected.TransitivelyAffected.Select(p => new { p.PackageId, p.Path }),
-            totalAffected = affected.DirectlyAffected.Length + affected.TransitivelyAffected.Length,
-            selectedTests = selectedTests,
-            confidence = confidence,
-        };
+        var output = new AffectedSetOutput(
+            ChangedFiles: affected.ChangedFiles,
+            DirectlyAffected: affected.DirectlyAffected.Select(p => new ProjectRefEntry(
+                PackageId: p.PackageId,
+                Path: p.Path
+            )).ToArray(),
+            TransitivelyAffected: affected.TransitivelyAffected.Select(p => new ProjectRefEntry(
+                PackageId: p.PackageId,
+                Path: p.Path
+            )).ToArray(),
+            TotalAffected: affected.DirectlyAffected.Length + affected.TransitivelyAffected.Length,
+            SelectedTests: selectedTests,
+            Confidence: confidence
+        );
 
-        return JsonSerializer.Serialize(output, new JsonSerializerOptions { WriteIndented = true });
+        return JsonSerializer.Serialize(output, TitiJsonContext.Default.AffectedSetOutput);
     }
 }

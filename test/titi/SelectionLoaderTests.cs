@@ -14,13 +14,15 @@ public class SelectionLoaderTests
         Directory.CreateDirectory(Path.Combine(cacheDir, "edges"));
         var edgesPath = Path.Combine(cacheDir, "edges", "edges.edn");
         // The edges file is JSON (written by TestsRecordCommand) despite .edn.
-        File.WriteAllText(edgesPath, JsonSerializer.Serialize(new object[]
+        // Use camelCase to match the [JsonPropertyName] attributes on JsonEdge.
+        var json = JsonSerializer.Serialize(new object[]
         {
-            new { From = "Orion.Tests.A.M1", To = "/repo/src/Foo.cs", Origin = 0, Weight = 1_000_000L,
-                  LineRanges = new[] { new { Start = 1, End = 5 } } },
-            new { From = "Orion.Tests.A.M2", To = "/repo/src/Bar.cs", Origin = 0, Weight = 1_000_000L,
-                  LineRanges = Array.Empty<object>() },
-        }));
+            new { from = "Orion.Tests.A.M1", to = "/repo/src/Foo.cs", origin = 0, weight = 1_000_000L,
+                  lineRanges = new[] { new { start = 1, end = 5 } } },
+            new { from = "Orion.Tests.A.M2", to = "/repo/src/Bar.cs", origin = 0, weight = 1_000_000L,
+                  lineRanges = Array.Empty<object>() },
+        }, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
+        File.WriteAllText(edgesPath, json);
 
         var edges = titi.SelectionLoader.LoadEdges(cacheDir);
 
@@ -56,12 +58,13 @@ public class SelectionLoaderTests
         using var tmp = new TempDir();
         var cacheDir = Path.Combine(tmp.Path, "test-cache");
         Directory.CreateDirectory(Path.Combine(cacheDir, "edges"));
-        File.WriteAllText(Path.Combine(cacheDir, "edges", "edges.edn"), JsonSerializer.Serialize(new object[]
+        var json = JsonSerializer.Serialize(new object[]
         {
-            new { From = "", To = "/repo/x.cs", Origin = 0, Weight = 1L, LineRanges = Array.Empty<object>() },
-            new { From = "T", To = "", Origin = 0, Weight = 1L, LineRanges = Array.Empty<object>() },
-            new { From = "T2", To = "/repo/y.cs", Origin = 0, Weight = 1L, LineRanges = Array.Empty<object>() },
-        }));
+            new { from = "", to = "/repo/x.cs", origin = 0, weight = 1L, lineRanges = Array.Empty<object>() },
+            new { from = "T", to = "", origin = 0, weight = 1L, lineRanges = Array.Empty<object>() },
+            new { from = "T2", to = "/repo/y.cs", origin = 0, weight = 1L, lineRanges = Array.Empty<object>() },
+        }, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
+        File.WriteAllText(Path.Combine(cacheDir, "edges", "edges.edn"), json);
 
         var edges = titi.SelectionLoader.LoadEdges(cacheDir);
         Assert.Single(edges);

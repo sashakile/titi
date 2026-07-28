@@ -7,7 +7,7 @@ namespace titi.TestDiscovery;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
-using System.Text.Json.Serialization;
+using titi.Serialization;
 
 public static class DiscoveryCache
 {
@@ -84,7 +84,7 @@ public static class DiscoveryCache
                 return null;
 
             var json = File.ReadAllText(itemsPath);
-            return JsonSerializer.Deserialize<TestItem[]>(json, JsonOptions);
+            return JsonSerializer.Deserialize(json, TitiJsonContext.Default.TestItemArray);
         }
         catch
         {
@@ -107,18 +107,11 @@ public static class DiscoveryCache
         var fingerprintPath = Path.Combine(itemDir, "fingerprint");
         var itemsPath = Path.Combine(itemDir, "items.json");
 
-        File.WriteAllText(itemsPath, JsonSerializer.Serialize(items, JsonOptions));
+        File.WriteAllText(itemsPath, JsonSerializer.Serialize(items, TitiJsonContext.Default.TestItemArray));
         File.WriteAllText(fingerprintPath, fingerprint);
     }
 
     // ── Helpers ──────────────────────────────────────────────────
-
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        WriteIndented = true,
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) },
-    };
 
     private static string HashFile(SHA256 sha, string path)
     {

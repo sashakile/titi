@@ -13,6 +13,7 @@ namespace titi;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using titi.Serialization;
 
 public record TestRunPlan(string ProjectPath, string ResultsDir, string Arguments);
 
@@ -80,7 +81,7 @@ public static class RecordPlanner
         try
         {
             var json = File.ReadAllText(path);
-            return JsonSerializer.Deserialize<Dictionary<string, string>>(json) ?? [];
+            return JsonSerializer.Deserialize(json, TitiJsonContext.Default.DictionaryStringString) ?? [];
         }
         catch
         {
@@ -97,7 +98,7 @@ public static class RecordPlanner
         var path = ProjectFingerprintsPath(cacheDir);
         var dir = Path.GetDirectoryName(path);
         if (dir != null) Directory.CreateDirectory(dir);
-        File.WriteAllText(path, JsonSerializer.Serialize(fingerprints, new JsonSerializerOptions { WriteIndented = true }));
+        File.WriteAllText(path, JsonSerializer.Serialize(fingerprints, TitiJsonContext.Default.DictionaryStringString));
     }
 
     /// <summary>

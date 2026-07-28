@@ -117,15 +117,23 @@ public static class Program
         }
 
         // Print result
-        var output = new Dictionary<string, object>
-        {
-            ["solutionPath"] = slnxPath,
-            ["swapped"] = swapResult.Swapped.Select(s => new { s.PackageId, s.LocalSourcePath }).ToArray(),
-            ["retained"] = swapResult.Retained.Select(r => new { r.PackageId, r.Reason, r.Detail }).ToArray(),
-            ["projectCount"] = swapResult.Swapped.Length + swapResult.Retained.Length,
-        };
+        var output = new titi.Serialization.OpenCommandOutput(
+            SolutionPath: slnxPath,
+            Swapped: swapResult.Swapped.Select(s => new titi.Serialization.SwappedEntry(
+                PackageId: s.PackageId,
+                LocalSourcePath: s.LocalSourcePath
+            )).ToArray(),
+            Retained: swapResult.Retained.Select(r => new titi.Serialization.RetainedEntry(
+                PackageId: r.PackageId,
+                Reason: (int)r.Reason,
+                Detail: r.Detail
+            )).ToArray(),
+            ProjectCount: swapResult.Swapped.Length + swapResult.Retained.Length
+        );
 
-        Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(output, new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
+        Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(
+            output,
+            titi.Serialization.TitiJsonContext.Default.OpenCommandOutput));
         return 0;
     }
 
@@ -327,10 +335,17 @@ public static class Program
         if (coberturaXml != null)
         {
             var edgesPath = Path.Combine(edgesDir, "edges.edn");
+            var edgeEntries = ingest.Edges.Select(e => new titi.Serialization.EdgeEntry(
+                From: e.From,
+                To: e.To,
+                Origin: (int?)e.Origin,
+                Weight: e.Weight,
+                LineRanges: e.LineRanges.Select(lr => new titi.Serialization.LineRangeEntry(lr.Start, lr.End)).ToArray()
+            )).ToArray();
             File.WriteAllText(edgesPath,
                 System.Text.Json.JsonSerializer.Serialize(
-                    ingest.Edges.Select(e => new { e.From, e.To, e.Origin, e.Weight, e.LineRanges }),
-                    new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
+                    edgeEntries,
+                    titi.Serialization.TitiJsonContext.Default.EdgeEntryArray));
             Console.Error.WriteLine($"Wrote {ingest.Edges.Length} edges to {edgesPath}");
         }
 
@@ -435,10 +450,17 @@ public static class Program
 
                     // Write per-project edge file for future incremental runs.
                     var projEdgePath = Path.Combine(projectsDir, $"{SanitizeForPath(plan.ProjectPath)}.edn");
+                    var projEdgeEntries = projectEdges.Select(e => new titi.Serialization.EdgeEntry(
+                        From: e.From,
+                        To: e.To,
+                        Origin: (int?)e.Origin,
+                        Weight: e.Weight,
+                        LineRanges: e.LineRanges.Select(lr => new titi.Serialization.LineRangeEntry(lr.Start, lr.End)).ToArray()
+                    )).ToArray();
                     File.WriteAllText(projEdgePath,
                         System.Text.Json.JsonSerializer.Serialize(
-                            projectEdges.Select(e => new { e.From, e.To, e.Origin, e.Weight, e.LineRanges }),
-                            new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
+                            projEdgeEntries,
+                            titi.Serialization.TitiJsonContext.Default.EdgeEntryArray));
                 }
                 finally
                 {
@@ -459,7 +481,8 @@ public static class Program
                     try
                     {
                         var json = File.ReadAllText(projEdgePath);
-                        var edges = System.Text.Json.JsonSerializer.Deserialize<List<SelectionLoader.JsonEdge>>(json);
+                        var edges = System.Text.Json.JsonSerializer.Deserialize(
+                            json, titi.Serialization.TitiJsonContext.Default.ListJsonEdge);
                         if (edges != null)
                         {
                             allEdges.AddRange(edges.Select(e => new TestToSourceEdge(
@@ -491,10 +514,17 @@ public static class Program
 
         // Write combined edges.edn (the file that SelectionLoader.LoadEdges reads).
         var edgesPath = Path.Combine(edgesDir, "edges.edn");
+        var allEdgeEntries = allEdges.Select(e => new titi.Serialization.EdgeEntry(
+            From: e.From,
+            To: e.To,
+            Origin: (int?)e.Origin,
+            Weight: e.Weight,
+            LineRanges: e.LineRanges.Select(lr => new titi.Serialization.LineRangeEntry(lr.Start, lr.End)).ToArray()
+        )).ToArray();
         File.WriteAllText(edgesPath,
             System.Text.Json.JsonSerializer.Serialize(
-                allEdges.Select(e => new { e.From, e.To, e.Origin, e.Weight, e.LineRanges }),
-                new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
+                allEdgeEntries,
+                titi.Serialization.TitiJsonContext.Default.EdgeEntryArray));
 
         // Update per-project fingerprints (fresh values for all current projects).
         var currentFingerprints = new Dictionary<string, string>();

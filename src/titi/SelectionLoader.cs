@@ -5,7 +5,9 @@
 namespace titi;
 
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using titi.Safety;
+using titi.Serialization;
 
 public static class SelectionLoader
 {
@@ -23,7 +25,7 @@ public static class SelectionLoader
         try
         {
             var json = File.ReadAllText(edgesPath);
-            var arr = JsonSerializer.Deserialize<List<JsonEdge>>(json) ?? [];
+            var arr = JsonSerializer.Deserialize(json, TitiJsonContext.Default.ListJsonEdge) ?? [];
             return arr.Select(e => new TestToSourceEdge(
                 From: e.From ?? "",
                 To: e.To ?? "",
@@ -53,16 +55,23 @@ public static class SelectionLoader
     /// <summary>JSON shape for edges.edn serialization.</summary>
     internal sealed class JsonEdge
     {
+        [JsonPropertyName("from")]
         public string? From { get; set; }
+        [JsonPropertyName("to")]
         public string? To { get; set; }
+        [JsonPropertyName("origin")]
         public int? Origin { get; set; }
+        [JsonPropertyName("weight")]
         public long Weight { get; set; }
+        [JsonPropertyName("lineRanges")]
         public List<JsonLineRange>? LineRanges { get; set; }
     }
 
     internal sealed class JsonLineRange
     {
+        [JsonPropertyName("start")]
         public int Start { get; set; }
+        [JsonPropertyName("end")]
         public int End { get; set; }
     }
 
