@@ -1,0 +1,100 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TestRun id="4510ae0d-0ed0-459e-9204-c71956a957e5" name="@bluefin 2026-07-28 13:27:27" xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">
+  <Times creation="2026-07-28T13:27:27.1675092-03:00" queuing="2026-07-28T13:27:27.1675104-03:00" start="2026-07-28T13:27:26.4798215-03:00" finish="2026-07-28T13:27:27.1733556-03:00" />
+  <TestSettings name="default" id="4c58f457-e2f8-4b39-9f08-5054ac068b7b">
+    <Deployment runDeploymentRoot="_bluefin_2026-07-28_13_27_27" />
+  </TestSettings>
+  <Results>
+    <UnitTestResult executionId="de999c96-5be1-4802-a85b-fe5b8d2aefe0" testId="bcc1392d-ae13-cc68-c8b6-23c1b21bc149" testName="Verify.Tests.UnitTest1.Skipped" computerName="bluefin" duration="00:00:00.0010000" startTime="2026-07-28T13:27:27.0496127-03:00" endTime="2026-07-28T13:27:27.0500377-03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="NotExecuted" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="de999c96-5be1-4802-a85b-fe5b8d2aefe0">
+      <Output>
+        <ErrorInfo>
+          <Message>reason</Message>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="accc127f-e6e4-473e-8b47-8d763f7abe9b" testId="ca03410a-dede-fc10-eebd-a410d537ff2f" testName="Verify.Tests.UnitTest1.Parse(input: &quot;b&quot;)" computerName="bluefin" duration="00:00:00.0000058" startTime="2026-07-28T13:27:27.0434838-03:00" endTime="2026-07-28T13:27:27.0435123-03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="accc127f-e6e4-473e-8b47-8d763f7abe9b" />
+    <UnitTestResult executionId="4651a397-4437-43b6-a73e-b65b9f286264" testId="4c934ea3-65d6-63c2-dc02-0423a6393327" testName="Verify.Tests.UnitTest1.Test1" computerName="bluefin" duration="00:00:00.0021727" startTime="2026-07-28T13:27:27.0249949-03:00" endTime="2026-07-28T13:27:27.0328763-03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="4651a397-4437-43b6-a73e-b65b9f286264" />
+    <UnitTestResult executionId="72ecab6f-87c1-4a11-bb3c-c1440cdbb9fa" testId="c3aab53f-f82f-e1d2-ed73-e7259a9700ad" testName="Verify.Tests.UnitTest1.Parse(input: &quot;a&quot;)" computerName="bluefin" duration="00:00:00.0001577" startTime="2026-07-28T13:27:27.0433805-03:00" endTime="2026-07-28T13:27:27.0434185-03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="72ecab6f-87c1-4a11-bb3c-c1440cdbb9fa" />
+    <UnitTestResult executionId="f020e6b5-74df-42c8-8390-a27cbb3ffef0" testId="16e9975f-f655-e866-b93b-c8f3fb285547" testName="Verify.Tests.UnitTest1.AnotherFact" computerName="bluefin" duration="00:00:00.0000913" startTime="2026-07-28T13:27:27.0425019-03:00" endTime="2026-07-28T13:27:27.0425921-03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="f020e6b5-74df-42c8-8390-a27cbb3ffef0" />
+    <UnitTestResult executionId="7281bb67-1f29-44f1-a772-17e5f47cbe12" testId="ef19ad1d-05cb-4f93-24dc-dbd2e585265b" testName="Verify.Tests.UnitTest1.Parse(input: &quot;c&quot;)" computerName="bluefin" duration="00:00:00.0000534" startTime="2026-07-28T13:27:27.0432487-03:00" endTime="2026-07-28T13:27:27.0433069-03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="7281bb67-1f29-44f1-a772-17e5f47cbe12" />
+    <UnitTestResult executionId="c36980f3-dd75-43f1-a392-a673100f2aff" testId="d742bef9-0eb7-afc5-b8a7-648811d6f4b3" testName="Verify.Tests.UnitTest1.Fails" computerName="bluefin" duration="00:00:00.0011967" startTime="2026-07-28T13:27:27.0436108-03:00" endTime="2026-07-28T13:27:27.0440846-03:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="c36980f3-dd75-43f1-a392-a673100f2aff">
+      <Output>
+        <ErrorInfo>
+          <Message>intentional failure</Message>
+          <StackTrace>   at Verify.Tests.UnitTest1.Fails() in /tmp/titi-verify-or6/Verify.Tests/UnitTest1.cs:line 17
+   at System.Reflection.MethodBaseInvoker.InterpretedInvoke_Method(Object obj, IntPtr* args)
+   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+  </Results>
+  <TestDefinitions>
+    <UnitTest name="Verify.Tests.UnitTest1.AnotherFact" storage="/tmp/titi-verify-or6/verify.tests/bin/debug/net10.0/verify.tests.dll" id="16e9975f-f655-e866-b93b-c8f3fb285547">
+      <Execution id="f020e6b5-74df-42c8-8390-a27cbb3ffef0" />
+      <TestMethod codeBase="/tmp/titi-verify-or6/Verify.Tests/bin/Debug/net10.0/Verify.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="Verify.Tests.UnitTest1" name="AnotherFact" />
+    </UnitTest>
+    <UnitTest name="Verify.Tests.UnitTest1.Parse(input: &quot;c&quot;)" storage="/tmp/titi-verify-or6/verify.tests/bin/debug/net10.0/verify.tests.dll" id="ef19ad1d-05cb-4f93-24dc-dbd2e585265b">
+      <Execution id="7281bb67-1f29-44f1-a772-17e5f47cbe12" />
+      <TestMethod codeBase="/tmp/titi-verify-or6/Verify.Tests/bin/Debug/net10.0/Verify.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="Verify.Tests.UnitTest1" name="Parse" />
+    </UnitTest>
+    <UnitTest name="Verify.Tests.UnitTest1.Fails" storage="/tmp/titi-verify-or6/verify.tests/bin/debug/net10.0/verify.tests.dll" id="d742bef9-0eb7-afc5-b8a7-648811d6f4b3">
+      <Execution id="c36980f3-dd75-43f1-a392-a673100f2aff" />
+      <TestMethod codeBase="/tmp/titi-verify-or6/Verify.Tests/bin/Debug/net10.0/Verify.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="Verify.Tests.UnitTest1" name="Fails" />
+    </UnitTest>
+    <UnitTest name="Verify.Tests.UnitTest1.Skipped" storage="/tmp/titi-verify-or6/verify.tests/bin/debug/net10.0/verify.tests.dll" id="bcc1392d-ae13-cc68-c8b6-23c1b21bc149">
+      <Execution id="de999c96-5be1-4802-a85b-fe5b8d2aefe0" />
+      <TestMethod codeBase="/tmp/titi-verify-or6/Verify.Tests/bin/Debug/net10.0/Verify.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="Verify.Tests.UnitTest1" name="Skipped" />
+    </UnitTest>
+    <UnitTest name="Verify.Tests.UnitTest1.Test1" storage="/tmp/titi-verify-or6/verify.tests/bin/debug/net10.0/verify.tests.dll" id="4c934ea3-65d6-63c2-dc02-0423a6393327">
+      <Execution id="4651a397-4437-43b6-a73e-b65b9f286264" />
+      <TestMethod codeBase="/tmp/titi-verify-or6/Verify.Tests/bin/Debug/net10.0/Verify.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="Verify.Tests.UnitTest1" name="Test1" />
+    </UnitTest>
+    <UnitTest name="Verify.Tests.UnitTest1.Parse(input: &quot;b&quot;)" storage="/tmp/titi-verify-or6/verify.tests/bin/debug/net10.0/verify.tests.dll" id="ca03410a-dede-fc10-eebd-a410d537ff2f">
+      <Execution id="accc127f-e6e4-473e-8b47-8d763f7abe9b" />
+      <TestMethod codeBase="/tmp/titi-verify-or6/Verify.Tests/bin/Debug/net10.0/Verify.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="Verify.Tests.UnitTest1" name="Parse" />
+    </UnitTest>
+    <UnitTest name="Verify.Tests.UnitTest1.Parse(input: &quot;a&quot;)" storage="/tmp/titi-verify-or6/verify.tests/bin/debug/net10.0/verify.tests.dll" id="c3aab53f-f82f-e1d2-ed73-e7259a9700ad">
+      <Execution id="72ecab6f-87c1-4a11-bb3c-c1440cdbb9fa" />
+      <TestMethod codeBase="/tmp/titi-verify-or6/Verify.Tests/bin/Debug/net10.0/Verify.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="Verify.Tests.UnitTest1" name="Parse" />
+    </UnitTest>
+  </TestDefinitions>
+  <TestEntries>
+    <TestEntry testId="bcc1392d-ae13-cc68-c8b6-23c1b21bc149" executionId="de999c96-5be1-4802-a85b-fe5b8d2aefe0" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="ca03410a-dede-fc10-eebd-a410d537ff2f" executionId="accc127f-e6e4-473e-8b47-8d763f7abe9b" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="4c934ea3-65d6-63c2-dc02-0423a6393327" executionId="4651a397-4437-43b6-a73e-b65b9f286264" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="c3aab53f-f82f-e1d2-ed73-e7259a9700ad" executionId="72ecab6f-87c1-4a11-bb3c-c1440cdbb9fa" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="16e9975f-f655-e866-b93b-c8f3fb285547" executionId="f020e6b5-74df-42c8-8390-a27cbb3ffef0" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="ef19ad1d-05cb-4f93-24dc-dbd2e585265b" executionId="7281bb67-1f29-44f1-a772-17e5f47cbe12" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="d742bef9-0eb7-afc5-b8a7-648811d6f4b3" executionId="c36980f3-dd75-43f1-a392-a673100f2aff" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+  </TestEntries>
+  <TestLists>
+    <TestList name="Results Not in a List" id="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestList name="All Loaded Results" id="19431567-8539-422a-85d7-44ee4e166bda" />
+  </TestLists>
+  <ResultSummary outcome="Failed">
+    <Counters total="7" executed="6" passed="5" failed="1" error="0" timeout="0" aborted="0" inconclusive="0" passedButRunAborted="0" notRunnable="0" notExecuted="0" disconnected="0" warning="0" completed="0" inProgress="0" pending="0" />
+    <Output>
+      <StdOut>[xUnit.net 00:00:00.00] xUnit.net VSTest Adapter v3.1.4+50e68bbb8b (64-bit .NET 10.0.10)
+[xUnit.net 00:00:00.07]   Discovering: Verify.Tests
+[xUnit.net 00:00:00.12]   Discovered:  Verify.Tests
+[xUnit.net 00:00:00.14]   Starting:    Verify.Tests
+[xUnit.net 00:00:00.19]       intentional failure
+[xUnit.net 00:00:00.19]       Stack Trace:
+[xUnit.net 00:00:00.19]         /tmp/titi-verify-or6/Verify.Tests/UnitTest1.cs(17,0): at Verify.Tests.UnitTest1.Fails()
+[xUnit.net 00:00:00.19]            at System.Reflection.MethodBaseInvoker.InterpretedInvoke_Method(Object obj, IntPtr* args)
+[xUnit.net 00:00:00.19]            at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
+[xUnit.net 00:00:00.19]       reason
+[xUnit.net 00:00:00.19]   Finished:    Verify.Tests
+Test 'Verify.Tests.UnitTest1.Skipped' was skipped in the test run.
+</StdOut>
+    </Output>
+    <RunInfos>
+      <RunInfo computerName="bluefin" outcome="Error" timestamp="2026-07-28T13:27:27.0468581-03:00">
+        <Text>[xUnit.net 00:00:00.19]     Verify.Tests.UnitTest1.Fails [FAIL]</Text>
+      </RunInfo>
+      <RunInfo computerName="bluefin" outcome="Warning" timestamp="2026-07-28T13:27:27.0510196-03:00">
+        <Text>[xUnit.net 00:00:00.19]     Verify.Tests.UnitTest1.Skipped [SKIP]</Text>
+      </RunInfo>
+    </RunInfos>
+  </ResultSummary>
+</TestRun>

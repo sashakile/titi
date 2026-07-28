@@ -21,7 +21,7 @@
 ## 3. Test-to-source dependency edges
 - [ ] 3.1 Implement Cobertura XML coverage parser for `dotnet test --collect "XPlat Code Coverage"` output
 - [ ] 3.2 Implement `build_edges_from_coverage(cobertura-xml)` → vector of TestToSourceEdge (one per test×source-file pair)
-- [ ] 3.3 Implement `build_edges_from_trx(trx-path)` → per-test duration and outcome
+- [x] 3.3 Implement `build_edges_from_trx(trx-path)` → per-test duration and outcome  (Coverage.Parser.ParseTrx → TrxTestResult[]; per-test outcome + duration + error, TD-02)
 - [ ] 3.4 Wire coverage and TRX together: invoke tests once, collect both outputs, build edge set
 - [ ] 3.5 Store test-to-source edges in `.titi/test-cache/edges/` with source file fingerprints
 - [ ] 3.6 Incremental edge update: only re-run tests whose source-fingerprint changed
