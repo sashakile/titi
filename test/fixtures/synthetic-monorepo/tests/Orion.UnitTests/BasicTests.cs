@@ -28,9 +28,13 @@ public class NestedTests
     }
 }
 
-public class GenericTestClass<T>
-    where T : new()
+// Generic *method* on a concrete class (not an open generic class, which
+// xUnit cannot instantiate). Mirrors the spec's test-detection scenario for
+// generic test methods (CreateInstance<Foo> in FactoryTests).
+public class FactoryTests
 {
     [Fact]
-    public void GenericTest() => Assert.NotNull(new T());
+    public void CreateInstance_Foo() => Assert.NotNull(new Foo());
 }
+
+public class Foo { }

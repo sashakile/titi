@@ -11,5 +11,6 @@
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
     <ProjectReference Include="../../libs/Orion.Core.Data/Orion.Core.Data.csproj" />
     <ProjectReference Include="../../libs/Orion.Auth/Orion.Auth.csproj" />
+    <PackageReference Include="coverlet.collector" Version="6.0.4" />
   </ItemGroup>
 </Project>

@@ -12,5 +12,6 @@
     <ProjectReference Include="../../libs/Orion.Core.Data/Orion.Core.Data.csproj" />
     <ProjectReference Include="../../libs/Orion.Auth/Orion.Auth.csproj" />
     <ProjectReference Include="../../libs/Orion.Storage/Orion.Storage.csproj" />
+    <PackageReference Include="coverlet.collector" Version="6.0.4" />
   </ItemGroup>
 </Project>
