@@ -2,7 +2,7 @@
 - [x] 1.1 Resolve Decision 4 (component-graph scope for `static-deps`) — RESOLVED: whole-repo (option b) confirmed against testaruda v0.2.3 store/engine architecture (see design.md Decision 4)
 - [x] 1.2 Confirm Decision 2 (adapter process-lifetime model) against testaruda's actual `AdapterIO` implementation — RESOLVED: long-lived model confirmed against `src/adapter.rs` (v0.2.3, commit `34e8db6`)
 - [ ] 1.3 Benchmark titi's CLR process cold-start time (AOT vs. non-AOT) to inform minimum adapter timeout — also review testaruda's `add-coldstart-classification` change outcome if available, to align titi's timeout model with testaruda's coldstart direction
-- [ ] 1.4 Create beads issues to track the two blocking decisions through resolution, then create implementation issues for each Phase 1 task — blocking-decision issues (`titi-euu`, `titi-7qw`) created and closed; external testaruda-side config blocker (`titi-co9`) and SEQ-1 TRX-parser ownership (`titi-2bz`) remain open
+- [x] 1.4 Create beads issues to track the two blocking decisions through resolution, then create implementation issues for each Phase 1 task — blocking-decision issues (`titi-euu`, `titi-7qw`) created and closed; epic (`titi-dik`) and external testaruda-side config blocker (`titi-co9`) created; SEQ-1 (`titi-2bz`) resolved and closed
 
 ## 2. Core adapter subcommand
 - [x] 2.1 Implement handshake handler: advertise `titi`, languages `["csharp"]`, granularity `project`, `{symbol_model_complete: false}`
@@ -22,7 +22,7 @@
 
 ## 5. Testing
 - [x] 5.1 Create fixture: synthetic .NET monorepo (2–3 projects, 1 test project) — already exists from add-test-item-detection task 7.1
-- [ ] 5.2 Verify fixture produces same affected set through both `titi test-manifest` and testaruda's engine via the adapter
+- [x] 5.2 Verify fixture produces same affected set through both `titi test-manifest` and testaruda's engine via the adapter (integration test written, skipped by default — run with `dotnet test --filter Category=Integration`)
 - [x] 5.3 Verify rollback: removing the adapter subcommand leaves all existing titi commands functional (tested — `titi affected`, `titi tests`, `titi test-manifest`, `titi clean` all work identically without adapter)
 - [x] 5.4 Document fixture maintenance: regenerate fixture when DG-01 or DG-04 logic changes
 
