@@ -20,28 +20,20 @@ jobs:
           global-json-file: global.json
 
       - name: Restore dependencies
-        # RestoreLockedMode is enabled by Directory.Build.props when CI=true
-        # Skip if no projects exist yet
         run: |
-          if find src test -maxdepth 3 -name "*.csproj" 2>/dev/null | grep -q .; then
-            dotnet restore src/titi/titi.csproj
-          else
-            echo "No .csproj files found, skipping restore"
-          fi
+          dotnet restore src/titi/titi.csproj
+          dotnet restore test/titi/titi.Tests.csproj
         env:
           CI: true
 
       - name: Build
         run: |
-          if find src test -maxdepth 3 -name "*.csproj" 2>/dev/null | grep -q .; then
-            dotnet build src/titi/titi.csproj --no-restore --configuration Release
-          else
-            echo "No .csproj files found, skipping build"
-          fi
+          dotnet build src/titi/titi.csproj --no-restore --configuration Release
+          dotnet build test/titi/titi.Tests.csproj --no-restore --configuration Release
 
       - name: Test
         run: |
-          dotnet test src/titi/titi.csproj --no-build --configuration Release --collect:"XPlat Code Coverage" || echo "No test projects found, skipping"
+          dotnet test test/titi/titi.Tests.csproj --no-build --configuration Release --collect:"XPlat Code Coverage"
 
       - name: Upload coverage
         uses: codecov/codecov-action@v5
