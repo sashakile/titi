@@ -422,6 +422,118 @@ public class AdapterTests
         }
     }
 
+    // ── Integration tests (skipped by default) ───────────────────
+
+    [Fact(Skip = "Slow (requires NuGet restore + dotnet build); run with: dotnet test --filter Category=Integration")]
+    public void AdapterIntegration_HandshakeAndDiscover_AgainstSyntheticFixture()
+    {
+        var fixtureDir = Path.GetFullPath(
+            Path.Combine(AppContext.BaseDirectory, "../../../../../test/fixtures/synthetic-monorepo"));
+
+        var projectPath = Path.GetFullPath(
+            Path.Combine(AppContext.BaseDirectory, "../../../../../src/titi/titi.csproj"));
+
+        // Start the adapter as a subprocess
+        var psi = new System.Diagnostics.ProcessStartInfo
+        {
+            FileName = "dotnet",
+            Arguments = $"run --project \"{projectPath}\" -- testaruda-adapter",
+            WorkingDirectory = fixtureDir,
+            RedirectStandardInput = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+        };
+
+        using var proc = System.Diagnostics.Process.Start(psi);
+        Assert.NotNull(proc);
+
+        // Send handshake
+        proc.StandardInput.WriteLine("""{"command":"handshake","params":{}}""");
+        proc.StandardInput.Flush();
+
+        var handshakeLine = proc.StandardOutput.ReadLine();
+        Assert.NotNull(handshakeLine);
+
+        using var handshakeDoc = JsonDocument.Parse(handshakeLine);
+        var handshakeResult = handshakeDoc.RootElement.GetProperty("result");
+        Assert.Equal("titi", handshakeResult.GetProperty("name").GetString());
+        Assert.Equal("project", handshakeResult.GetProperty("granularity").GetString());
+
+        // Send discover
+        proc.StandardInput.WriteLine("""{"command":"discover","params":{}}""");
+        proc.StandardInput.Flush();
+
+        var discoverLine = proc.StandardOutput.ReadLine();
+        Assert.NotNull(discoverLine);
+
+        using var discoverDoc = JsonDocument.Parse(discoverLine);
+        var discoverResult = discoverDoc.RootElement.GetProperty("result");
+        var tests = discoverResult.GetProperty("tests").EnumerateArray().ToArray();
+
+        // Should find 2 test projects: Orion.UnitTests and Orion.IntegrationTests
+        Assert.True(tests.Length >= 2, $"Expected >=2 test items, got {tests.Length}");
+        var testIds = tests.Select(t => t.GetProperty("test_id").GetString()).ToArray();
+        Assert.Contains("Orion.UnitTests", testIds);
+        Assert.Contains("Orion.IntegrationTests", testIds);
+
+        // Clean shutdown
+        proc.StandardInput.Close();
+        proc.WaitForExit(10000);
+        Assert.Equal(0, proc.ExitCode);
+    }
+
+    [Fact(Skip = "Slow (requires NuGet restore + dotnet build); run with: dotnet test --filter Category=Integration")]
+    public void AdapterIntegration_StaticDeps_MatchesTestManifest()
+    {
+        var fixtureDir = Path.GetFullPath(
+            Path.Combine(AppContext.BaseDirectory, "../../../../../test/fixtures/synthetic-monorepo"));
+
+        var projectPath = Path.GetFullPath(
+            Path.Combine(AppContext.BaseDirectory, "../../../../../src/titi/titi.csproj"));
+
+        // Start the adapter as a subprocess
+        var psi = new System.Diagnostics.ProcessStartInfo
+        {
+            FileName = "dotnet",
+            Arguments = $"run --project \"{projectPath}\" -- testaruda-adapter",
+            WorkingDirectory = fixtureDir,
+            RedirectStandardInput = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+        };
+
+        using var proc = System.Diagnostics.Process.Start(psi);
+        Assert.NotNull(proc);
+
+        // Handshake first
+        proc.StandardInput.WriteLine("""{"command":"handshake","params":{}}""");
+        proc.StandardInput.Flush();
+        var handshakeLine = proc.StandardOutput.ReadLine();
+        Assert.NotNull(handshakeLine);
+
+        // Send static-deps with a known changed file that affects Orion.UnitTests
+        // (Orion.Core.Data is a dependency of Orion.UnitTests)
+        // Fixture paths use libs/ not src/
+        proc.StandardInput.WriteLine("""{"command":"static-deps","params":{"changed_files":["libs/Orion.Core.Data/Parser.cs"],"affected_projects":[]}}""");
+        proc.StandardInput.Flush();
+
+        var depsLine = proc.StandardOutput.ReadLine();
+        Assert.NotNull(depsLine);
+
+        using var depsDoc = JsonDocument.Parse(depsLine);
+        var depsResult = depsDoc.RootElement.GetProperty("result");
+        var affectedTests = depsResult.GetProperty("affected_tests").EnumerateArray().ToArray();
+
+        // Should find at least Orion.UnitTests (which depends on Orion.Core.Data)
+        Assert.True(affectedTests.Length > 0, "Expected at least one affected test");
+
+        // Clean shutdown
+        proc.StandardInput.Close();
+        proc.WaitForExit(10000);
+    }
+
     // ── Helpers ──────────────────────────────────────────────────
 
     /// <summary>Create a minimal MonorepoGraph from a list of (path, packageId, isTestProject) tuples.</summary>

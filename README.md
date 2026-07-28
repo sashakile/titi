@@ -36,6 +36,7 @@ titi affected [--base]      List projects affected by current changes
 titi tests list <csproj>    Enumerate test items in a project
 titi tests ingest <trx>     Ingest test results and coverage
 titi tests record           Run all tests and collect results
+titi testaruda-adapter      Start testaruda adapter (JSON-over-stdio protocol)
 titi clean                  Remove all titi-generated artifacts
 titi --help                 Show usage
 ```
@@ -85,6 +86,70 @@ This separation means:
 - `add-test-item-detection` is a prerequisite for adapter Phase 2, not a replacement
 - The adapter can ship at project granularity while test-item features mature
 - Both changes are compatible and additive
+
+## testaruda Adapter
+
+titi ships a built-in testaruda adapter subcommand (`titi testaruda-adapter`)
+that speaks the testaruda JSON-over-stdio adapter protocol. This allows
+[testaruda](https://github.com/charly-vibes/testaruda) to use titi's
+MSBuild-accurate project graph as its C#/.NET static-dependency source.
+
+### Protocol
+
+The adapter reads one JSON request per line from stdin and writes one JSON
+response per line to stdout. Each request has a `command` field and `params`
+object:
+
+| Command | Description | Params |
+|---------|-------------|--------|
+| `handshake` | Capability advertisement | `{}` |
+| `discover` | Enumerate test projects | `{}` |
+| `static-deps` | Compute affected test items | `changed_files`, `affected_projects` |
+| `fingerprint` | Return project fingerprints | `{}` |
+| `run-args` | Generate test command | `test_ids` |
+| `ingest` | Parse TRX results | `trx_path` |
+| `shutdown` | Graceful shutdown | `{}` |
+
+### Phase 1: Project-level granularity
+
+Phase 1 operates at project granularity: each test item is a whole test
+assembly. `symbol_model_complete` and `runtime_edges` are both `false`.
+Benefits are composability, caching, and confidence scoring — not raw
+test-count reduction.
+
+### Known Limitations
+
+- **Process lifetime**: The adapter is a long-lived process for the duration of
+  one testaruda invocation. It builds the `MonorepoGraph` once during handshake
+  and answers all commands from in-memory state. Per-command spawning would be
+  unusably slow on large monorepos (30s cold-graph-build budget per DG-08).
+- **Lock interaction**: The adapter holds a read-only reference to the graph
+  cache. It never acquires the writer lock on `.titi/graph.cache` at query time.
+  Run `titi cache warm` before invoking testaruda to avoid contention.
+- **F#/VB.NET**: MSBuild project-graph evaluation is language-neutral, so F#
+  and VB.NET projects may work without changes. This is untested — verify
+  against a real mixed-language fixture before claiming support.
+- **Framework detection**: Phase 1 hardcodes `xunit` as the default framework
+  for all test projects. NUnit/MSTest projects are treated as xUnit at the
+  project level. Method-level framework detection is deferred to Phase 2.
+- **CLR cold-start**: The .NET CLR process startup time is a distinct cost
+  from the graph-build budget. Set the minimum adapter timeout in testaruda's
+  config to at least 30s to account for cold-start + graph build on large repos.
+
+### Minimum Adapter Timeout
+
+The CLR process cold-start + graph-build budget for a 1000-project repo is
+approximately 30 seconds (DG-08). Set the minimum adapter timeout in
+testaruda's configuration (`testaruda.toml`) to at least 30s for small repos
+and 60s for large repos. AOT publishing would reduce this significantly
+(not yet benchmarked).
+
+### Configuration
+
+The adapter requires no additional titi configuration — it reuses the existing
+`titi.config.edn` and `.titi/graph.cache`. The testaruda-side config defaults
+(`.csproj`/`.sln`/`.slnx` → `titi testaruda-adapter` mapping, dotnet-project
+detection) are in the testaruda repository (v0.2.5+).
 
 ## Implementation Language
 
