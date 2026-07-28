@@ -74,7 +74,7 @@ public static class ReplEngine
                     break;
 
                 case "tree":
-                    PrintTree(graph, output);
+                    PrintTree(graph, args, output, error);
                     break;
 
                 default:
@@ -294,33 +294,42 @@ public static class ReplEngine
         output.WriteLine($"Total: {affected.DirectlyAffected.Length + affected.TransitivelyAffected.Length} project(s)");
     }
 
-    static void PrintTree(MonorepoGraph graph, TextWriter output)
+    static void PrintTree(MonorepoGraph graph, string[] args, TextWriter output, TextWriter error)
     {
-        // Find root nodes (depth 0) and print their subtrees
-        var roots = graph.Nodes.Values
-            .Where(n => n.Depth == 0)
-            .OrderBy(n => n.Project.PackageId);
-
-        foreach (var root in roots)
+        if (args.Length < 1)
         {
-            PrintSubtree(root, graph, output, "", true);
+            error.WriteLine("Usage: tree <project-id> [--depth N]");
+            return;
         }
 
-        // If no depth-0 nodes, show all topologically
-        if (!roots.Any())
+        var pkgId = args[0];
+        var node = FindNode(graph, pkgId);
+        if (node == null)
         {
-            foreach (var node in graph.Nodes.Values.OrderBy(n => n.Project.PackageId))
+            error.WriteLine($"Package not found: {pkgId}");
+            return;
+        }
+
+        // Parse --depth flag
+        var maxDepth = 3;
+        for (int i = 1; i < args.Length; i++)
+        {
+            if (args[i] == "--depth" && i + 1 < args.Length)
             {
-                output.WriteLine($"{node.Project.PackageId}");
+                if (int.TryParse(args[i + 1], out var d) && d >= 0)
+                    maxDepth = d;
+                else
+                    error.WriteLine($"Warning: invalid depth '{args[i + 1]}', using default 3");
             }
         }
+
+        var visited = new HashSet<string>();
+        PrintSubtree(node, graph, output, "", true, maxDepth, 0, visited);
     }
 
-    static void PrintSubtree(GraphNode node, MonorepoGraph graph, TextWriter output, string prefix, bool isLast, HashSet<string>? visited = null)
+    static void PrintSubtree(GraphNode node, MonorepoGraph graph, TextWriter output, string prefix, bool isLast, int maxDepth, int currentDepth, HashSet<string> visited)
     {
-        visited ??= new HashSet<string>();
-
-        // Guard against cycles — the graph should be a DAG, but defensive
+        // Guard against cycles
         if (!visited.Add(node.Project.Path))
         {
             output.WriteLine($"{prefix}{ConnectorFor(isLast)}(cycle) {node.Project.PackageId}");
@@ -329,6 +338,10 @@ public static class ReplEngine
 
         var connector = ConnectorFor(isLast);
         output.WriteLine($"{prefix}{connector}{node.Project.PackageId}  ({node.Project.Path})");
+
+        // Stop recursion at max depth (or if no children)
+        if (currentDepth >= maxDepth)
+            return;
 
         var children = node.Dependencies
             .Select(d => graph.Nodes.GetValueOrDefault(d.To))
@@ -340,7 +353,7 @@ public static class ReplEngine
         for (int i = 0; i < children.Count; i++)
         {
             var childPrefix = prefix + (isLast ? "    " : "│   ");
-            PrintSubtree(children[i], graph, output, childPrefix, i == children.Count - 1, visited);
+            PrintSubtree(children[i], graph, output, childPrefix, i == children.Count - 1, maxDepth, currentDepth + 1, visited);
         }
     }
 

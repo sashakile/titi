@@ -364,9 +364,26 @@ public class ReplTests
         Assert.Contains("Orion.Core.Data", outText);
     }
 
-    /// <summary>Tree command shows tree view (root nodes with their dependency subtrees).</summary>
+    /// <summary>Tree command with project argument shows dependency tree.</summary>
     [Fact]
-    public void Repl_TreeCommand_ShowsTree()
+    public void Repl_TreeCommand_WithProject_ShowsTree()
+    {
+        var input = new StringReader("tree Orion.App\nquit\n");
+        var output = new StringWriter();
+        var error = new StringWriter();
+
+        var exitCode = ReplEngine.Run(MakeTestGraph(), input, output, error);
+
+        Assert.Equal(0, exitCode);
+        var outText = output.ToString();
+        // Tree rooted at Orion.App should show App and its dependency Core.Data
+        Assert.Contains("Orion.App", outText);
+        Assert.Contains("Orion.Core.Data", outText);
+    }
+
+    /// <summary>Tree command without project argument shows usage error.</summary>
+    [Fact]
+    public void Repl_TreeCommand_NoArg_ShowsUsage()
     {
         var input = new StringReader("tree\nquit\n");
         var output = new StringWriter();
@@ -375,10 +392,54 @@ public class ReplTests
         var exitCode = ReplEngine.Run(MakeTestGraph(), input, output, error);
 
         Assert.Equal(0, exitCode);
+        var errText = error.ToString();
+        Assert.Contains("Usage", errText);
+    }
+
+    /// <summary>Tree command with unknown project shows error.</summary>
+    [Fact]
+    public void Repl_TreeCommand_UnknownProject_ShowsError()
+    {
+        var input = new StringReader("tree Unknown.Pkg\nquit\n");
+        var output = new StringWriter();
+        var error = new StringWriter();
+
+        var exitCode = ReplEngine.Run(MakeTestGraph(), input, output, error);
+
+        Assert.Equal(0, exitCode);
+        var errText = error.ToString();
+        Assert.Contains("Unknown.Pkg", errText);
+    }
+
+    /// <summary>Tree with --depth 1 shows only direct dependencies.</summary>
+    [Fact]
+    public void Repl_TreeCommand_WithDepth_ShowsDirectOnly()
+    {
+        var input = new StringReader("tree Orion.App --depth 1\nquit\n");
+        var output = new StringWriter();
+        var error = new StringWriter();
+
+        var exitCode = ReplEngine.Run(MakeTestGraph(), input, output, error);
+
+        Assert.Equal(0, exitCode);
         var outText = output.ToString();
-        // Tree shows root nodes (depth 0) and their dependency subtrees
+        Assert.Contains("Orion.App", outText);
         Assert.Contains("Orion.Core.Data", outText);
-        // Orion.App is a dependent of Core.Data, not a dependency — not shown in tree
+    }
+
+    /// <summary>Leaf project with no deps prints just the project name.</summary>
+    [Fact]
+    public void Repl_TreeCommand_LeafProject_PrintsJustName()
+    {
+        var input = new StringReader("tree Orion.Core.Data\nquit\n");
+        var output = new StringWriter();
+        var error = new StringWriter();
+
+        var exitCode = ReplEngine.Run(MakeTestGraph(), input, output, error);
+
+        Assert.Equal(0, exitCode);
+        var outText = output.ToString();
+        Assert.Contains("Orion.Core.Data", outText);
     }
 
     /// <summary>REPL with null graph exits with code 1 and E001.</summary>
