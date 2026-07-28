@@ -1,3 +1,15 @@
+<!-- DONT:START -->
+# DONT MANAGED BLOCK — DO NOT EDIT
+
+This project uses `dont` for grounded-claim workflow.
+
+At session start run `dont prime --json`.
+
+Canonical agent instructions: `.dont/AGENTS.md`.
+
+Edits inside this managed block will be overwritten by `dont doctor --fix`.
+<!-- DONT:END -->
+
 <!-- OPENSPEC:START -->
 # OpenSpec Instructions
 

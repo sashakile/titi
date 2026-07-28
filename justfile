@@ -71,4 +71,8 @@ status:
     wai status
 
 # Run the same checks as CI
-ci: restore build-release test
+ci: restore build-release test dont-check
+
+# Check all dont claims are grounded (verified)
+dont-check:
+    dont check
