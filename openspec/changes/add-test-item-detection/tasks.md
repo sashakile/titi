@@ -38,7 +38,7 @@
 
 ## 5. CLI commands
 - [ ] 5.1 Implement `titi tests list <project-pat>` — enumerate test items, optionally filtered by tier
-- [ ] 5.2 Implement `titi tests ingest <trx-path> [--coverage <cobertura-path>]` — parse results and update edge cache; TRX-Cobertura correlation produces per-test×source-file edges
+- [x] 5.2 Implement `titi tests ingest <trx-path> [--coverage <cobertura-path>]` — parse results and update edge cache; TRX-Cobertura correlation produces per-test×source-file edges  (Ingestor.IngestRun -> EdgeBuilder.BuildFromRun; edges keyed From=testName To=sourceFile, written to .titi/test-cache/edges/edges.edn; malformed TRX -> exit 1 no cache modification; TRX-only -> no edges written, preserves prior index; history deferred to 4.6)
 - [x] 5.3 Implement `titi tests record` — run all test projects with coverage, ingest results, build edge index (ci-performed)  (Core.TestsRecordCommand: graph->test-projects->dotnet test --collect XPlat --logger trx->ArtifactLocator->ParseTrx+ParseCobertura->EdgeBuilder->.titi/test-cache/edges/; content-based fingerprint incremental skip)
 - [ ] 5.4 Upgrade `titi test-manifest` with `--select` flag: when enabled, emit per-test-filtered Traversal using `dotnet test --filter`; framework-aware filter syntax (xUnit `~`, NUnit `==`, MSTest `TestCategory` or `~`); batch splitting when filter >4000 chars
 - [ ] 5.5 Upgrade `titi test-manifest` with `--list` flag: print selected test IDs instead of emitting a Traversal file

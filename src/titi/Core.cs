@@ -238,21 +238,44 @@ public static class Program
         }
 
         Console.Error.WriteLine($"Ingesting {trxPath}...");
-        var titiDir = Path.Combine(Environment.CurrentDirectory, ".titi");
+        var repoRoot = Environment.CurrentDirectory;
+        var titiDir = Path.Combine(repoRoot, ".titi");
         var cacheDir = Path.Combine(titiDir, "test-cache");
-        Directory.CreateDirectory(cacheDir);
+        var edgesDir = Path.Combine(cacheDir, "edges");
+        Directory.CreateDirectory(edgesDir);
 
+        var trxXml = File.ReadAllText(trxPath);
+        string? coberturaXml = null;
         if (coveragePath != null && File.Exists(coveragePath))
         {
             Console.Error.WriteLine($"Reading coverage from {coveragePath}...");
-            var coberturaXml = File.ReadAllText(coveragePath);
-            var edges = titi.Coverage.Parser.ParseCobertura(coberturaXml, Environment.CurrentDirectory);
-            var edgesPath = Path.Combine(cacheDir, "edges.edn");
-            File.WriteAllText(edgesPath,
-                System.Text.Json.JsonSerializer.Serialize(edges.Select(e => new { e.From, e.To, e.Origin, e.Weight })));
-            Console.Error.WriteLine($"Wrote {edges.Length} edges to {edgesPath}");
+            coberturaXml = File.ReadAllText(coveragePath);
         }
 
+        // Correlate TRX + Cobertura into per-test×source edges (CLI-21).
+        var ingest = Ingestor.IngestRun(trxXml, coberturaXml, repoRoot);
+
+        // CLI-21 "malformed input": exit 1, warn, do NOT modify the edge cache.
+        if (ingest.IsMalformed)
+        {
+            Console.Error.WriteLine($"Warning: could not parse TRX file {trxPath}; edge cache not modified.");
+            return 1;
+        }
+
+        // Only write the edge index when coverage was provided — a TRX-only
+        // ingest updates run history (deferred: task 4.6) but builds no edges,
+        // and must NOT overwrite a prior edge index with an empty array.
+        if (coberturaXml != null)
+        {
+            var edgesPath = Path.Combine(edgesDir, "edges.edn");
+            File.WriteAllText(edgesPath,
+                System.Text.Json.JsonSerializer.Serialize(
+                    ingest.Edges.Select(e => new { e.From, e.To, e.Origin, e.Weight, e.LineRanges }),
+                    new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
+            Console.Error.WriteLine($"Wrote {ingest.Edges.Length} edges to {edgesPath}");
+        }
+
+        Console.Error.WriteLine($"Ingested {ingest.Results.Length} test result(s) from {trxPath}.");
         Console.Error.WriteLine("Ingest complete.");
         return 0;
     }
