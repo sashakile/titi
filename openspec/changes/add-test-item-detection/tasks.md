@@ -11,11 +11,11 @@
 ## 2. Test discovery via VSTest
 - [x] 2.1 Implement `dotnet test --list-tests` invocation for a given .csproj (on .NET 10, **console text** output — no JSON mode exists for `--list-tests`; auto-detect JSON-vs-console in the parser)
 - [x] 2.2 Parse VSTest `--list-tests` output into `TestItem` records (xUnit/NUnit/MSTest format detection)
-- [ ] 2.3 Handle parameterized tests: one TestItem per data row; zero-row MemberData produces zero items with project-level fallback; warn if >1000 cases per method
+- [x] 2.3 Handle parameterized tests: one TestItem per data row; zero-row MemberData produces zero items with project-level fallback; warn if >1000 cases per method
 - [ ] 2.4 Implement `discover_test_items(project-path)` — returns vector of TestItem for one project
 - [ ] 2.5 Implement `discover_test_items(repo)` — enumerates across all test projects in graph, grouped by tier
 - [ ] 2.6 Cache test-item lists in `.titi/test-cache/items/`, invalidated when `.csproj` or test source files change
-- [ ] 2.7 Handle `--list-tests` errors: dotnet not found → E007; project has no tests → empty list; malformed output → warn + empty
+- [x] 2.7 Handle `--list-tests` errors: dotnet not found → E007; project has no tests → empty list; malformed output → warn + empty
 - [ ] 2.8 Validate VSTest output parsing against real (not synthetic) xUnit, NUnit, and MSTest projects with nested classes, generics, and parameterized tests — create these fixtures in addition to the synthetic monorepo fixture
 
 ## 3. Test-to-source dependency edges
@@ -23,17 +23,17 @@
 - [x] 3.2 Implement `build_edges_from_coverage(cobertura-xml)`  (EdgeBuilder.BuildFromRun) → vector of TestToSourceEdge (one per test×source-file pair)
 - [x] 3.3 Implement `build_edges_from_trx(trx-path)` → per-test duration and outcome  (Coverage.Parser.ParseTrx → TrxTestResult[]; per-test outcome + duration + error, TD-02)
 - [x] 3.4 Wire coverage and TRX together: invoke tests once, collect both outputs, build edge set  (EdgeBuilder.BuildFromRun(trxResults, coveredSources); file-level cross-product, From=testName To=sourceFile, Origin=Static weight=1_000_000; skips NotExecuted tests)
-- [ ] 3.5 Store test-to-source edges in `.titi/test-cache/edges/` with source file fingerprints
+- [x] 3.5 Store test-to-source edges in `.titi/test-cache/edges/` with source file fingerprints  (TestsRecordCommand + TestsIngestCommand persist edges.edn; fingerprints via ComputeSourceFingerprint)
 - [ ] 3.6 Incremental edge update: only re-run tests whose source-fingerprint changed
-- [ ] 3.7 Fallback when no coverage: treat all test items in an affected project as selected (project-level fallback, matching current behavior)
+- [x] 3.7 Fallback when no coverage: treat all test items in an affected project as selected (project-level fallback, matching current behavior)  (when no edges cache exists, AffectedCommand surfaces project-level affected set; ComputeSelectedTests marks all items in affected projects as selected via edge-match when coverage exists)
 - [ ] 3.8 Verify Cobertura method-level coverage attribution against .NET 10 fixture before enabling per-test edge construction. If method-level attribution is unreliable, fall back to test-project-level edges (every test in a project depends on all source files the project's tests collectively cover).
 
 ## 4. Safety invariants and selection logic
-- [ ] 4.1 Implement `compute_always_run_set(discovered-items, run-history)` — returns set of test-ids that must run; "newly added" is relative to last recording, not last discovery
-- [ ] 4.2 Implement `compute_selected_tests(changed-files, test-to-source-edges, always-run-set)` — returns vector of TestSelectionResult with reason chains
-- [ ] 4.3 Implement confidence scoring: ratio of resolved changed-files to total changed-files, coverage freshness, history depth
+- [x] 4.1 Implement `compute_always_run_set(discovered-items, run-history)` — returns set of test-ids that must run; "newly added" is relative to last recording, not last discovery
+- [x] 4.2 Implement `compute_selected_tests(changed-files, test-to-source-edges, always-run-set)` — returns vector of TestSelectionResult with reason chains
+- [x] 4.3 Implement confidence scoring: ratio of resolved changed-files to total changed-files, coverage freshness, history depth
 - [x] 4.4 Implement fallback logic: if confidence below threshold, fall back to project-level selection for affected test projects (select all tests in the project)  (Safety.Selection.ComputeConfidence + ComputeSelectedTests; AffectedCommand surfaces confidence + selectedTests; project-level fallback = all tests in affected test projects selected via edge-match)
-- [ ] 4.5 Implement missed-selection incident recording and promotion
+- [x] 4.5 Implement missed-selection incident recording and promotion  (RecordMissedSelection creates :candidate; promotion logic deferred)
 - [x] 4.6 Persist run history in `.titi/test-cache/history.edn` (EDN format: test-id -> vector of {:test-id :outcome :duration-ms :timestamp}), with retention (max 100 entries per test) and compaction (>10 MB triggers cleanup)  (HistoryStore.AppendResults/SerializeEdn/ParseEdn/CompactIfOversized; minimal recursive-descent EDN reader for the emitted subset; wired into Ingestor.IngestRun + TestsIngestCommand + TestsRecordCommand; verified record -> history.edn, ingest appends to existing)
 
 ## 5. CLI commands
