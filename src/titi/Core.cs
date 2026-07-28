@@ -10,6 +10,7 @@ using titi.Solution;
 using titi.Affected;
 using titi.TestCli;
 using titi.Safety;
+using titi.TestManifest;
 
 namespace titi.Core;
 
@@ -42,6 +43,7 @@ public static class Program
             ["tests", "list", ..] => TestsListCommand(args[2..]),
             ["tests", "ingest", ..] => TestsIngestCommand(args[2..]),
             ["tests", "record", ..] => TestsRecordCommand(),
+            ["test-manifest", ..] => TestManifestCommand(args[1..]),
             ["clean"] => CleanCommand(),
             ["--help"] or ["-h"] or [] => PrintHelp(),
             _ => UnknownCommand(args[0])
@@ -602,6 +604,326 @@ public static class Program
         return (stdout, stderr, proc.ExitCode == 0);
     }
 
+    static int TestManifestCommand(string[] args)
+    {
+        var (graph, config, exitCode) = BuildGraphForRepo();
+        if (graph == null || exitCode != 0)
+            return exitCode;
+
+        // Parse flags
+        var baseRef = "HEAD~1";
+        var tierFilter = (TestTier?)null;
+        var selectMode = false;
+        var listMode = false;
+
+        for (int i = 0; i < args.Length; i++)
+        {
+            switch (args[i])
+            {
+                case "--base" when i + 1 < args.Length:
+                    baseRef = args[++i];
+                    break;
+                case "--tier" when i + 1 < args.Length:
+                    tierFilter = args[++i].ToLower() switch
+                    {
+                        "unit" => TestTier.Unit,
+                        "package" => TestTier.Package,
+                        "integration" => TestTier.Integration,
+                        "compatibility" => TestTier.Compatibility,
+                        var v => throw new ArgumentException($"Unknown tier: {v}")
+                    };
+                    break;
+                case "--select":
+                    selectMode = true;
+                    break;
+                case "--list":
+                    listMode = true;
+                    break;
+            }
+        }
+
+        var repoRoot = Environment.CurrentDirectory;
+
+        // Get changed files from git
+        Console.Error.WriteLine($"Running git diff {baseRef}..HEAD...");
+        var (changedFiles, gitErr) = titi.Affected.Analyzer.GetChangedFiles(repoRoot, baseRef);
+
+        if (gitErr != null)
+        {
+            Console.Error.WriteLine($"Warning: git diff failed: {gitErr}");
+        }
+
+        // Build affected set
+        var affected = titi.Affected.Analyzer.BuildAffectedSet(changedFiles, graph);
+        var affectedTestProjects = affected.DirectlyAffected
+            .Concat(affected.TransitivelyAffected)
+            .Where(p => p.IsTestProject)
+            .DistinctBy(p => p.PackageId)
+            .ToArray();
+
+        // Apply --tier filter if specified
+        if (tierFilter.HasValue)
+        {
+            affectedTestProjects = affectedTestProjects
+                .Where(p => MatchesTier(p, tierFilter.Value, config?.TestTiers))
+                .ToArray();
+        }
+
+        if (affectedTestProjects.Length == 0)
+        {
+            Console.Error.WriteLine("No affected test projects found.");
+            if (selectMode)
+            {
+                // Exit code 20: safe to skip (no affected tests)
+                return 20;
+            }
+            // Generate empty Traversal
+            var manifestDir = Path.Combine(repoRoot, ".titi", "manifest");
+            Directory.CreateDirectory(manifestDir);
+            var outputPath = Path.Combine(manifestDir, "test-manifest.proj");
+            var xml = titi.TestManifest.TraversalGenerator.Generate([], null);
+            File.WriteAllText(outputPath, xml);
+            Console.Error.WriteLine($"Wrote empty Traversal to {outputPath}");
+            return 0;
+        }
+
+        if (!selectMode)
+        {
+            // Project-level Traversal (no filtering)
+            var manifestDir = Path.Combine(repoRoot, ".titi", "manifest");
+            Directory.CreateDirectory(manifestDir);
+            var outputPath = Path.Combine(manifestDir, "test-manifest.proj");
+            var xml = titi.TestManifest.TraversalGenerator.Generate(affectedTestProjects, null);
+            File.WriteAllText(outputPath, xml);
+            Console.Error.WriteLine($"Wrote Traversal to {outputPath} with {affectedTestProjects.Length} project(s)");
+            return 0;
+        }
+
+        // ── --select mode: per-test filtered Traversal ──────────────
+
+        // Load edges and history from cache
+        var cacheDir = Path.Combine(repoRoot, ".titi", "test-cache");
+        var edges = SelectionLoader.LoadEdges(cacheDir);
+        var history = SelectionLoader.LoadHistory(cacheDir);
+
+        if (edges.Length == 0)
+        {
+            // No edges available: fall back to project-level with warning
+            Console.Error.WriteLine("Warning: no test-to-source edges found. Falling back to project-level Traversal.");
+            Console.Error.WriteLine("  Run 'titi tests record' to build the edge index.");
+
+            var manifestDir = Path.Combine(repoRoot, ".titi", "manifest");
+            Directory.CreateDirectory(manifestDir);
+            var outputPath = Path.Combine(manifestDir, "test-manifest.proj");
+            var xml = titi.TestManifest.TraversalGenerator.Generate(affectedTestProjects, null);
+            File.WriteAllText(outputPath, xml);
+            Console.Error.WriteLine($"Wrote project-level Traversal to {outputPath}");
+            return 0;
+        }
+
+        // Discover test items from affected test projects
+        Console.Error.WriteLine($"Discovering test items from {affectedTestProjects.Length} affected test project(s)...");
+        var allItems = new List<TestItem>();
+        foreach (var proj in affectedTestProjects)
+        {
+            var projDir = Path.GetDirectoryName(proj.Path) ?? "";
+            var fingerprint = titi.TestDiscovery.DiscoveryCache.ComputeFingerprint(projDir, proj.Path);
+            var cacheKey = proj.PackageId;
+            var items = titi.TestDiscovery.DiscoveryCache.GetOrDiscover(cacheDir, cacheKey, fingerprint, () =>
+            {
+                var (stdout, stderr, ok) = RunDotnetListTests(proj.Path, repoRoot);
+                if (!ok)
+                {
+                    Console.Error.WriteLine($"  warning: list-tests failed for {proj.PackageId}: {stderr.Split('\n').FirstOrDefault()}");
+                    return [];
+                }
+                return titi.TestDiscovery.Parser.Parse(stdout, TestTier.Unit);
+            });
+            allItems.AddRange(items);
+        }
+
+        var itemsArray = allItems.ToArray();
+        var alwaysRun = FlattenLatest(history);
+        var alwaysRunSet = titi.Safety.Selection.ComputeAlwaysRunSet(itemsArray, alwaysRun);
+        var selectedTests = titi.Safety.Selection.ComputeSelectedTests(
+            itemsArray, edges, alwaysRunSet, affected.ChangedFiles);
+
+        var selectedItems = itemsArray
+            .Where(i => selectedTests.Any(s => s.TestId == i.TestId && s.Selected))
+            .ToArray();
+
+        // Determine confidence
+        var allResolved = affected.ChangedFiles.Length > 0
+            ? affected.DirectlyAffected.Length
+            : 0;
+        var confidence = affected.ChangedFiles.Length > 0
+            ? (double)allResolved / affected.ChangedFiles.Length
+            : 1.0;
+
+        // --list mode: print selected test IDs
+        if (listMode)
+        {
+            var output = titi.TestManifest.TestManifestCommand.FormatListOutput(selectedTests);
+            foreach (var line in output)
+                Console.WriteLine(line);
+
+            // Exit code signaling
+            if (confidence < (config?.TestDetection.FallbackThreshold ?? 0.7))
+            {
+                Console.Error.WriteLine("Confidence below threshold — consider full-suite run.");
+                return 10;
+            }
+            if (output.Length == 0)
+                return 20; // safe to skip
+            return 0;
+        }
+
+        // ── Generate per-test filtered Traversal ──────────────────
+
+        // Group selected items by project (using PackageId as key, mapped from test-id assembly prefix)
+        // We need to map test items back to their project. Use the AssemblyPath prefix from test items.
+        var projSelectedItems = new Dictionary<string, List<TestItem>>();
+        foreach (var item in selectedItems)
+        {
+            // Find which project this item belongs to (by matching assembly path prefix)
+            var pkgId = FindProjectForItem(item, affectedTestProjects);
+            if (pkgId == null) continue;
+
+            if (!projSelectedItems.ContainsKey(pkgId))
+                projSelectedItems[pkgId] = new List<TestItem>();
+            projSelectedItems[pkgId].Add(item);
+        }
+
+        // Build per-project filters
+        var projectFilters = new Dictionary<string, string>();
+        var manifestDir2 = Path.Combine(repoRoot, ".titi", "manifest");
+        Directory.CreateDirectory(manifestDir2);
+
+        foreach (var kv in projSelectedItems)
+        {
+            var framework = titi.TestManifest.FilterExprBuilder.GetCommonFramework(kv.Value.ToArray());
+            if (framework == null)
+            {
+                Console.Error.WriteLine($"  warning: mixed frameworks in {kv.Key}, falling back to project-level Traversal");
+                // Fall back to project-level: include the project without filter
+                var proj = affectedTestProjects.FirstOrDefault(p => p.PackageId == kv.Key);
+                if (proj != null)
+                {
+                    projectFilters[kv.Key] = ""; // No filter — run all tests
+                }
+                continue;
+            }
+
+            var batches = titi.TestManifest.FilterExprBuilder.BatchFilters(
+                kv.Value.ToArray(), framework.Value,
+                maxFilterLength: 4000,
+                batchSize: config?.TestDetection.BatchSize ?? 100);
+
+            if (batches.Count == 0)
+            {
+                Console.Error.WriteLine($"  warning: no filter generated for {kv.Key}, using project-level");
+                continue;
+            }
+
+            for (int b = 0; b < batches.Count; b++)
+            {
+                var (expr, batchItems) = batches[b];
+
+                // Determine the project descriptor for this package
+                var proj = affectedTestProjects.FirstOrDefault(p => p.PackageId == kv.Key);
+                if (proj == null) continue;
+
+                var batchName = batches.Count > 1
+                    ? $"test-manifest-{SanitizeForPath(kv.Key)}-batch-{b + 1:D3}.proj"
+                    : $"test-manifest-{SanitizeForPath(kv.Key)}.proj";
+                var batchPath = Path.Combine(manifestDir2, batchName);
+
+                var perProjectFilters = new Dictionary<string, string>
+                {
+                    [kv.Key] = expr
+                };
+
+                var xml = titi.TestManifest.TraversalGenerator.Generate(
+                    [proj], perProjectFilters, batchName: batchName);
+                File.WriteAllText(batchPath, xml);
+                Console.Error.WriteLine($"  Wrote batch {batchPath} ({batchItems.Length} test(s))");
+
+                // Log parameterized-row over-approximation warnings
+                var paramRows = batchItems.Where(i => i.TestId.Contains('(')).ToArray();
+                if (paramRows.Length > 0)
+                {
+                    Console.Error.WriteLine($"    note: {paramRows.Length} parameterized row(s) — whole-method selected (over-approximation)");
+                }
+            }
+        }
+
+        // Emit confidence diagnostics
+        if (confidence < (config?.TestDetection.FallbackThreshold ?? 0.7))
+        {
+            Console.Error.WriteLine("Warning: selection confidence below threshold. Consider full-suite run.");
+            return 10;
+        }
+
+        if (selectedItems.Length == 0)
+        {
+            Console.Error.WriteLine("No tests selected — safe to skip test phase.");
+            return 20;
+        }
+
+        Console.Error.WriteLine($"Generated filtered Traversal(s) for {selectedItems.Length} selected test(s)");
+        return 0;
+    }
+
+    /// <summary>Map a TestItem back to its owning project's PackageId.</summary>
+    static string? FindProjectForItem(TestItem item, ProjectDescriptor[] projects)
+    {
+        // Match by assembly path prefix (testId format: "<assembly>::...")
+        var testId = item.TestId;
+        var assemblySep = testId.IndexOf("::", StringComparison.Ordinal);
+        if (assemblySep < 0)
+            return projects.FirstOrDefault()?.PackageId; // fallback
+
+        var assemblyPrefix = testId[..assemblySep];
+
+        // Try exact match on package name or assembly name
+        foreach (var proj in projects)
+        {
+            if (proj.PackageId == assemblyPrefix)
+                return proj.PackageId;
+            var projName = Path.GetFileNameWithoutExtension(proj.Path);
+            if (projName == assemblyPrefix)
+                return proj.PackageId;
+        }
+
+        // Fallback: return the first project
+        return projects.FirstOrDefault()?.PackageId;
+    }
+
+    /// <summary>Check if a project matches a specific test tier.</summary>
+    static bool MatchesTier(ProjectDescriptor proj, TestTier tier, TestTierConfig? tierConfig)
+    {
+        if (tierConfig == null)
+        {
+            // Default heuristic: package name contains tier name
+            var tierName = tier.ToString().ToLower();
+            return proj.PackageId.Contains(tierName, StringComparison.OrdinalIgnoreCase);
+        }
+
+        var isUnit = tierConfig.Unit?.Any(p => proj.PackageId.Contains(p, StringComparison.OrdinalIgnoreCase)) ?? false;
+        var isPackage = tierConfig.Package?.Any(p => proj.PackageId.Contains(p, StringComparison.OrdinalIgnoreCase)) ?? false;
+        var isIntegration = tierConfig.Integration?.Any(p => proj.PackageId.Contains(p, StringComparison.OrdinalIgnoreCase)) ?? false;
+        var isCompatibility = tierConfig.Compatibility?.Any(p => proj.PackageId.Contains(p, StringComparison.OrdinalIgnoreCase)) ?? false;
+
+        return tier switch
+        {
+            TestTier.Unit => isUnit,
+            TestTier.Package => isPackage,
+            TestTier.Integration => isIntegration,
+            TestTier.Compatibility => isCompatibility,
+            _ => true,
+        };
+    }
+
     static int CleanCommand()
     {
         var titiDir = ".titi";
@@ -627,6 +949,8 @@ public static class Program
         Console.WriteLine("  titi tests list <proj>   List test items in a project");
         Console.WriteLine("  titi tests ingest <trx>   Ingest test results and coverage");
         Console.WriteLine("  titi tests record         Run all tests and record results");
+        Console.WriteLine("  titi test-manifest [--tier <tier>]   Generate Traversal .proj for affected tests");
+        Console.WriteLine("  titi test-manifest --select [--list]  Generate per-test filtered Traversal");
         Console.WriteLine("  titi clean               Remove all titi-generated artifacts");
         Console.WriteLine("  titi --help               Show this help");
         return 0;
