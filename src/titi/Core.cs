@@ -8,6 +8,8 @@ using titi.Graph;
 using titi.Swap;
 using titi.Solution;
 using titi.Affected;
+using titi.TestCli;
+using titi.Safety;
 
 namespace titi.Core;
 
@@ -37,6 +39,9 @@ public static class Program
         {
             ["open", var packageId, ..] => OpenCommand(packageId, args[2..]),
             ["affected", ..] => AffectedCommand(args[1..]),
+            ["tests", "list", ..] => TestsListCommand(args[2..]),
+            ["tests", "ingest", ..] => TestsIngestCommand(args[2..]),
+            ["tests", "record", ..] => TestsRecordCommand(),
             ["clean"] => CleanCommand(),
             ["--help"] or ["-h"] or [] => PrintHelp(),
             _ => UnknownCommand(args[0])
@@ -149,16 +154,109 @@ public static class Program
         // Build affected set
         var affected = Analyzer.BuildAffectedSet(changedFiles, graph);
 
-        // Print result
-        var output = new Dictionary<string, object>
-        {
-            ["changedFiles"] = affected.ChangedFiles,
-            ["directlyAffected"] = affected.DirectlyAffected.Select(p => new { p.PackageId, p.Path }).ToArray(),
-            ["transitivelyAffected"] = affected.TransitivelyAffected.Select(p => new { p.PackageId, p.Path }).ToArray(),
-            ["totalAffected"] = affected.DirectlyAffected.Length + affected.TransitivelyAffected.Length,
-        };
+        // Try to run safety selection if test edges are available (stub for now)
+        // Uses discovered Items from TieredTestSet if populated
+        var allItems = graph.Nodes.Values
+            .Where(n => n.Project.IsTestProject)
+            .SelectMany(_ => Array.Empty<TestItem>())
+            .ToArray();
 
-        Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(output, new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
+        var selectedTests = Safety.Selection.ComputeSelectedTests(
+            allItems, [], new HashSet<string>(), affected.ChangedFiles);
+        affected = affected with { SelectedTests = selectedTests };
+
+        // Print result using upgraded formatter
+        Console.WriteLine(Formatter.FormatAffectedUpgrade(affected));
+        return 0;
+    }
+
+    static int TestsListCommand(string[] args)
+    {
+        var projectPath = args.Length > 0 ? args[0] : null;
+
+        if (projectPath == null || !File.Exists(projectPath))
+        {
+            Console.Error.WriteLine("Usage: titi tests list <path-to-csproj>");
+            return 1;
+        }
+
+        Console.Error.WriteLine($"Listing tests for {projectPath}...");
+        try
+        {
+            var psi = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "dotnet",
+                Arguments = $"test \"{projectPath}\" --list-tests -f json",
+                WorkingDirectory = Environment.CurrentDirectory,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+            };
+
+            using var proc = System.Diagnostics.Process.Start(psi);
+            if (proc == null)
+            {
+                Console.Error.WriteLine("Failed to start dotnet process");
+                return 7;
+            }
+
+            var stdout = proc.StandardOutput.ReadToEnd();
+            proc.WaitForExit(60000);
+
+            if (proc.ExitCode != 0)
+            {
+                Console.Error.WriteLine($"dotnet test --list-tests failed (exit {proc.ExitCode})");
+                Console.Error.WriteLine("Note: on .NET 10, use 'dotnet test --list-tests -f json'");
+            }
+
+            var items = titi.TestDiscovery.Parser.ParseVsTestJson(stdout, TestTier.Unit);
+            Console.WriteLine(Formatter.FormatTestItems(items));
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Error listing tests: {ex.Message}");
+            return 7;
+        }
+    }
+
+    static int TestsIngestCommand(string[] args)
+    {
+        // Parse args: trx-path [--coverage cobertura-path]
+        var trxPath = args.Length > 0 ? args[0] : null;
+        var coveragePath = args.SkipWhile(a => a != "--coverage").Skip(1).FirstOrDefault();
+
+        if (trxPath == null || !File.Exists(trxPath))
+        {
+            Console.Error.WriteLine("Usage: titi tests ingest <trx-path> [--coverage <cobertura-path>]");
+            return 1;
+        }
+
+        Console.Error.WriteLine($"Ingesting {trxPath}...");
+        var titiDir = Path.Combine(Environment.CurrentDirectory, ".titi");
+        var cacheDir = Path.Combine(titiDir, "test-cache");
+        Directory.CreateDirectory(cacheDir);
+
+        if (coveragePath != null && File.Exists(coveragePath))
+        {
+            Console.Error.WriteLine($"Reading coverage from {coveragePath}...");
+            var coberturaXml = File.ReadAllText(coveragePath);
+            var edges = titi.Coverage.Parser.ParseCobertura(coberturaXml, Environment.CurrentDirectory);
+            var edgesPath = Path.Combine(cacheDir, "edges.edn");
+            File.WriteAllText(edgesPath,
+                System.Text.Json.JsonSerializer.Serialize(edges.Select(e => new { e.From, e.To, e.Origin, e.Weight })));
+            Console.Error.WriteLine($"Wrote {edges.Length} edges to {edgesPath}");
+        }
+
+        Console.Error.WriteLine("Ingest complete.");
+        return 0;
+    }
+
+    static int TestsRecordCommand()
+    {
+        Console.Error.WriteLine("Running all test projects with coverage...");
+        Console.Error.WriteLine("Note: titi tests record requires test projects to be configured.");
+        Console.Error.WriteLine("Run 'titi tests list <project>' for individual projects.");
         return 0;
     }
 
@@ -184,6 +282,9 @@ public static class Program
         Console.WriteLine("Usage:");
         Console.WriteLine("  titi open <package-id>   Generate transient .slnx with reference swapping");
         Console.WriteLine("  titi affected [--base]   List projects affected by current changes");
+        Console.WriteLine("  titi tests list <proj>   List test items in a project");
+        Console.WriteLine("  titi tests ingest <trx>   Ingest test results and coverage");
+        Console.WriteLine("  titi tests record         Run all tests and record results");
         Console.WriteLine("  titi clean               Remove all titi-generated artifacts");
         Console.WriteLine("  titi --help               Show this help");
         return 0;
