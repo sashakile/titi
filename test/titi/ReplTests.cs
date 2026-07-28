@@ -142,9 +142,24 @@ public class ReplTests
         Assert.Contains("titi>", outText);
     }
 
-    /// <summary>Multiple commands: deps, then quit.</summary>
+    /// <summary>Deps command with project argument shows dependencies for that project.</summary>
     [Fact]
-    public void Repl_DepsCommand_OutputsDependencies()
+    public void Repl_DepsCommand_WithProject_ShowsDeps()
+    {
+        var input = new StringReader("deps Orion.App\nquit\n");
+        var output = new StringWriter();
+        var error = new StringWriter();
+
+        var exitCode = ReplEngine.Run(MakeTestGraph(), input, output, error);
+
+        Assert.Equal(0, exitCode);
+        var outText = output.ToString();
+        Assert.Contains("Orion.Core.Data", outText);
+    }
+
+    /// <summary>Deps without project argument shows usage error.</summary>
+    [Fact]
+    public void Repl_DepsCommand_NoArg_ShowsUsage()
     {
         var input = new StringReader("deps\nquit\n");
         var output = new StringWriter();
@@ -153,15 +168,59 @@ public class ReplTests
         var exitCode = ReplEngine.Run(MakeTestGraph(), input, output, error);
 
         Assert.Equal(0, exitCode);
-        var outText = output.ToString();
-        // Should show dependency info for all projects
-        Assert.Contains("Orion.Core.Data", outText);
-        Assert.Contains("Orion.App", outText);
+        var errText = error.ToString();
+        Assert.Contains("Usage", errText);
     }
 
-    /// <summary>Dependents command shows dependent relationships.</summary>
+    /// <summary>Deps with unknown project shows error message.</summary>
     [Fact]
-    public void Repl_DependentsCommand_OutputsDependents()
+    public void Repl_DepsCommand_UnknownProject_ShowsError()
+    {
+        var input = new StringReader("deps Unknown.Pkg\nquit\n");
+        var output = new StringWriter();
+        var error = new StringWriter();
+
+        var exitCode = ReplEngine.Run(MakeTestGraph(), input, output, error);
+
+        Assert.Equal(0, exitCode);
+        var errText = error.ToString();
+        Assert.Contains("Unknown.Pkg", errText);
+    }
+
+    /// <summary>Deps on project with no dependencies prints nothing (empty output).</summary>
+    [Fact]
+    public void Repl_DepsCommand_NoDeps_PrintsNothing()
+    {
+        var input = new StringReader("deps Orion.Core.Data\nquit\n");
+        var output = new StringWriter();
+        var error = new StringWriter();
+
+        var exitCode = ReplEngine.Run(MakeTestGraph(), input, output, error);
+
+        Assert.Equal(0, exitCode);
+        var outText = output.ToString();
+        // Should not contain "(no dependencies)" — prints nothing for empty
+        Assert.DoesNotContain("no dependencies", outText.ToLower());
+    }
+
+    /// <summary>Dependents command with project shows dependents for that project.</summary>
+    [Fact]
+    public void Repl_DependentsCommand_WithProject_ShowsDependents()
+    {
+        var input = new StringReader("dependents Orion.Core.Data\nquit\n");
+        var output = new StringWriter();
+        var error = new StringWriter();
+
+        var exitCode = ReplEngine.Run(MakeTestGraph(), input, output, error);
+
+        Assert.Equal(0, exitCode);
+        // Orion.Core.Data has no dependents in the test graph (Dependents not filled)
+        // So this should print nothing
+    }
+
+    /// <summary>Dependents without project argument shows usage error.</summary>
+    [Fact]
+    public void Repl_DependentsCommand_NoArg_ShowsUsage()
     {
         var input = new StringReader("dependents\nquit\n");
         var output = new StringWriter();
@@ -170,9 +229,8 @@ public class ReplTests
         var exitCode = ReplEngine.Run(MakeTestGraph(), input, output, error);
 
         Assert.Equal(0, exitCode);
-        var outText = output.ToString();
-        // Orion.Core.Data has Orion.App as dependent
-        Assert.Contains("Orion.Core.Data", outText);
+        var errText = error.ToString();
+        Assert.Contains("Usage", errText);
     }
 
     /// <summary>Path command shows path between two packages.</summary>

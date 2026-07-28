@@ -52,11 +52,11 @@ public static class ReplEngine
                     break;
 
                 case "deps":
-                    PrintDeps(graph, output);
+                    PrintDeps(graph, args, output, error);
                     break;
 
                 case "dependents":
-                    PrintDependents(graph, output);
+                    PrintDependents(graph, args, output, error);
                     break;
 
                 case "path":
@@ -86,60 +86,68 @@ public static class ReplEngine
     static void PrintHelp(TextWriter output)
     {
         output.WriteLine("Available commands:");
-        output.WriteLine("  deps                  Show all project dependencies");
-        output.WriteLine("  dependents            Show all project dependents");
+        output.WriteLine("  deps <project>        Show direct dependencies of a project");
+        output.WriteLine("  dependents <project>  Show direct dependents of a project");
         output.WriteLine("  path <from> <to>      Show dependency path between two packages");
         output.WriteLine("  info <package>        Show details for a specific package");
-        output.WriteLine("  affected              Show all projects (affected by any change)");
-        output.WriteLine("  tree                  Show dependency tree");
+        output.WriteLine("  affected [--from <ref>]  Show affected projects (by change or all)");
+        output.WriteLine("  tree <project> [--depth N]  Show dependency tree for a project");
         output.WriteLine("  help                  Show this help message");
         output.WriteLine("  quit, exit            Exit the REPL");
     }
 
-    static void PrintDeps(MonorepoGraph graph, TextWriter output)
+    static void PrintDeps(MonorepoGraph graph, string[] args, TextWriter output, TextWriter error)
     {
-        foreach (var node in graph.Nodes.Values.OrderBy(n => n.Project.PackageId))
+        if (args.Length < 1)
         {
-            var pkgId = node.Project.PackageId;
-            output.WriteLine($"{pkgId}:");
-            if (node.Dependencies.Length == 0)
-            {
-                output.WriteLine("  (no dependencies)");
-            }
-            else
-            {
-                foreach (var dep in node.Dependencies.OrderBy(d => d.To))
-                {
-                    var proj = graph.Nodes.GetValueOrDefault(dep.To)?.Project;
-                    var depPkg = proj?.PackageId ?? dep.To;
-                    output.WriteLine($"  -> {depPkg} [{dep.Mode}]");
-                }
-            }
-            output.WriteLine();
+            error.WriteLine("Usage: deps <project-id>");
+            return;
+        }
+
+        var pkgId = args[0];
+        var node = FindNode(graph, pkgId);
+        if (node == null)
+        {
+            error.WriteLine($"Package not found: {pkgId}");
+            return;
+        }
+
+        foreach (var dep in node.Dependencies)
+        {
+            var proj = graph.Nodes.GetValueOrDefault(dep.To)?.Project;
+            var depPkg = proj?.PackageId ?? dep.To;
+            output.WriteLine(depPkg);
         }
     }
 
-    static void PrintDependents(MonorepoGraph graph, TextWriter output)
+    static void PrintDependents(MonorepoGraph graph, string[] args, TextWriter output, TextWriter error)
     {
-        foreach (var node in graph.Nodes.Values.OrderBy(n => n.Project.PackageId))
+        if (args.Length < 1)
         {
-            var pkgId = node.Project.PackageId;
-            output.WriteLine($"{pkgId}:");
-            if (node.Dependents.Length == 0)
-            {
-                output.WriteLine("  (no dependents)");
-            }
-            else
-            {
-                foreach (var dep in node.Dependents.OrderBy(d => d.From))
-                {
-                    var proj = graph.Nodes.GetValueOrDefault(dep.From)?.Project;
-                    var depPkg = proj?.PackageId ?? dep.From;
-                    output.WriteLine($"  <- {depPkg} [{dep.Mode}]");
-                }
-            }
-            output.WriteLine();
+            error.WriteLine("Usage: dependents <project-id>");
+            return;
         }
+
+        var pkgId = args[0];
+        var node = FindNode(graph, pkgId);
+        if (node == null)
+        {
+            error.WriteLine($"Package not found: {pkgId}");
+            return;
+        }
+
+        foreach (var dep in node.Dependents)
+        {
+            var proj = graph.Nodes.GetValueOrDefault(dep.From)?.Project;
+            var depPkg = proj?.PackageId ?? dep.From;
+            output.WriteLine(depPkg);
+        }
+    }
+
+    static GraphNode? FindNode(MonorepoGraph graph, string packageId)
+    {
+        return graph.Nodes.Values.FirstOrDefault(n =>
+            n.Project.PackageId.Equals(packageId, StringComparison.OrdinalIgnoreCase));
     }
 
         static void PrintPath(MonorepoGraph graph, string[] args, TextWriter output, TextWriter error)
@@ -154,10 +162,8 @@ public static class ReplEngine
         var toPkg = args[1];
 
         // Find nodes matching the given package IDs
-        var fromNode = graph.Nodes.Values.FirstOrDefault(n =>
-            n.Project.PackageId.Equals(fromPkg, StringComparison.OrdinalIgnoreCase));
-        var toNode = graph.Nodes.Values.FirstOrDefault(n =>
-            n.Project.PackageId.Equals(toPkg, StringComparison.OrdinalIgnoreCase));
+        var fromNode = FindNode(graph, fromPkg);
+        var toNode = FindNode(graph, toPkg);
 
         if (fromNode == null)
         {
@@ -167,6 +173,13 @@ public static class ReplEngine
         if (toNode == null)
         {
             error.WriteLine($"Package not found: {toPkg}");
+            return;
+        }
+
+        // Same project: print just the name
+        if (fromNode.Project.Path == toNode.Project.Path)
+        {
+            output.WriteLine(fromNode.Project.PackageId);
             return;
         }
 
@@ -226,8 +239,7 @@ public static class ReplEngine
         }
 
         var pkgId = args[0];
-        var node = graph.Nodes.Values.FirstOrDefault(n =>
-            n.Project.PackageId.Equals(pkgId, StringComparison.OrdinalIgnoreCase));
+        var node = FindNode(graph, pkgId);
 
         if (node == null)
         {
