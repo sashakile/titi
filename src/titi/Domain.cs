@@ -61,20 +61,6 @@ public record MonorepoGraph(
     Dictionary<string, string> Fingerprints
 );
 
-public record AffectedSet(
-    string[] ChangedFiles,
-    ProjectDescriptor[] DirectlyAffected,
-    ProjectDescriptor[] TransitivelyAffected,
-    TieredTestSet AffectedTests
-);
-
-public record TieredTestSet(
-    ProjectDescriptor[] Unit,
-    ProjectDescriptor[] Package,
-    ProjectDescriptor[] Integration,
-    ProjectDescriptor[] Compatibility
-);
-
 public record CycleReport(string[] Cycle, GraphEdge[] EdgesToPreserve, string Diagnostic);
 
 // ── Swap Engine Records ────────────────────────────────────────
@@ -146,3 +132,92 @@ public record TitiConfig(
 // ── Error Record ────────────────────────────────────────────────
 
 public record TitiError(ErrorCode Code, string Message, Dictionary<string, object> Context, string[] Suggestions);
+
+// ── TID-1: Test-Item Domain Types ──────────────────────────────
+
+/// <summary>Supported test frameworks</summary>
+public enum TestFramework { Xunit, Nunit, Mstest }
+
+/// <summary>Execution tiers for test projects</summary>
+public enum TestTier { Unit, Package, Integration, Compatibility }
+
+/// <summary>Last recorded outcome of a test item</summary>
+public enum TestOutcome { None, Passed, Failed, Skipped, NotRun }
+
+/// <summary>Origin of a test-to-source dependency edge</summary>
+public enum EdgeOrigin { Static, Runtime, Manual }
+
+/// <summary>Why a test is always selected to run</summary>
+public enum AlwaysRunReason { LastRunFailed, NewlyAdded, NoHistory, MustRun, Quarantined }
+
+/// <summary>Why selection fell back to project-level</summary>
+public enum FallbackReason { ConfidenceBelowThreshold, UnresolvedFile, AdapterFailure, EnvironmentChange }
+
+/// <summary>Status of a missed-selection incident</summary>
+public enum IncidentStatus { Candidate, Promoted, Dismissed }
+
+/// <summary>An individual test method identified for selection</summary>
+public record TestItem(
+    string TestId,
+    string AssemblyPath,
+    string ClassName,
+    string MethodName,
+    TestFramework Framework,
+    TestTier Tier,
+    string? SourceFile,
+    TestOutcome LastOutcome,
+    long MeanDurationMs,
+    string[] Tags
+);
+
+/// <summary>A dependency edge from a test item to a source file</summary>
+public record TestToSourceEdge(
+    string From,
+    string To,
+    EdgeOrigin Origin,
+    long Weight,
+    (int Start, int End)[] LineRanges
+);
+
+/// <summary>A recorded incident where a test was missed by selection</summary>
+public record MissedSelectionIncident(
+    string ChangedContent,
+    string MissedTestId,
+    DateTime Timestamp,
+    IncidentStatus Status
+);
+
+/// <summary>Result of selecting a test item for execution</summary>
+public record TestSelectionResult(
+    string TestId,
+    bool Selected,
+    (string Kind, string Description)[] Reasons,
+    double Confidence,
+    FallbackReason? FallbackReason
+);
+
+// ── Modified Records (with test-item support) ───────────────────
+
+/// <summary>Tiered test set with both projects and individual test items</summary>
+public record TieredTestSet(
+    ProjectDescriptor[] Unit,
+    ProjectDescriptor[] Package,
+    ProjectDescriptor[] Integration,
+    ProjectDescriptor[] Compatibility
+)
+{
+    /// <summary>Per-tier test items (keyed by TestTier)</summary>
+    public Dictionary<TestTier, TestItem[]> Items { get; init; } = new();
+}
+
+/// <summary>Affected set with optional per-test selection results</summary>
+public record AffectedSet(
+    string[] ChangedFiles,
+    ProjectDescriptor[] DirectlyAffected,
+    ProjectDescriptor[] TransitivelyAffected,
+    TieredTestSet AffectedTests
+)
+{
+    /// <summary>Per-test selection results (populated when test edges are available)</summary>
+    public TestSelectionResult[] SelectedTests { get; init; } = [];
+}
