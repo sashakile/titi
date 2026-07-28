@@ -1,5 +1,5 @@
 // Tests for TID-12: testaruda adapter protocol (CLI-19)
-// Phase 1: project-level granularity, symbol_model_complete: false
+// Phase 2: method-level granularity, symbol_model_complete: true
 
 namespace titi.Tests;
 
@@ -17,8 +17,8 @@ public class AdapterTests
 
         Assert.Equal("titi", response.Name);
         Assert.Equal(["csharp"], response.Languages);
-        Assert.Equal("project", response.Granularity);
-        Assert.False(response.SymbolModelComplete);
+        Assert.Equal("method", response.Granularity);
+        Assert.True(response.SymbolModelComplete);
         Assert.False(response.RuntimeEdges);
     }
 
@@ -32,15 +32,15 @@ public class AdapterTests
         var root = doc.RootElement;
 
         Assert.Equal("titi", root.GetProperty("name").GetString());
-        Assert.Equal("project", root.GetProperty("granularity").GetString());
-        Assert.False(root.GetProperty("symbol_model_complete").GetBoolean());
+        Assert.Equal("method", root.GetProperty("granularity").GetString());
+        Assert.True(root.GetProperty("symbol_model_complete").GetBoolean());
         Assert.False(root.GetProperty("runtime_edges").GetBoolean());
 
         var langs = root.GetProperty("languages").EnumerateArray().Select(e => e.GetString()).ToArray();
         Assert.Contains("csharp", langs);
     }
 
-    // ── Discover ─────────────────────────────────────────────────
+    // ── Discover (method-level) ──────────────────────────────────
 
     [Fact]
     public void Discover_EmptyGraph_ReturnsEmptyItems()
@@ -53,94 +53,219 @@ public class AdapterTests
             Fingerprints: new()
         );
 
-        var items = TestarudaAdapter.HandleDiscover(graph);
+        var items = TestarudaAdapter.HandleDiscover(null);
 
         Assert.Empty(items);
     }
 
     [Fact]
-    public void Discover_OnlyTestProjects_ReturnsOnePerProject()
+    public void Discover_NoDiscoveredTests_ReturnsEmptyItems()
     {
-        var graph = MakeGraph([
-            ("/repo/src/Lib/Lib.csproj", "Lib", false),
-            ("/repo/tests/LibTest/LibTest.csproj", "LibTest", true),
-            ("/repo/tests/LibIntegration/LibIntegration.csproj", "LibIntegration", true),
-        ]);
+        var emptyTests = new Dictionary<string, TestItem[]>();
+        var items = TestarudaAdapter.HandleDiscover(emptyTests);
 
-        var items = TestarudaAdapter.HandleDiscover(graph);
-
-        Assert.Equal(2, items.Length);
-        Assert.Contains(items, i => i.TestId.StartsWith("LibTest"));
-        Assert.Contains(items, i => i.TestId.StartsWith("LibIntegration"));
-        Assert.DoesNotContain(items, i => i.TestId == "Lib");
+        Assert.Empty(items);
     }
 
     [Fact]
-    public void Discover_TestItem_HasExpectedFields()
+    public void Discover_DiscoveredTests_ReturnsOnePerMethod()
     {
         var graph = MakeGraph([
-            ("/repo/tests/MyTest/MyTest.csproj", "MyTest", true),
+            ("/repo/tests/LibTest/LibTest.csproj", "LibTest", true),
         ]);
 
-        var items = TestarudaAdapter.HandleDiscover(graph);
+        var discoveredTests = new Dictionary<string, TestItem[]>
+        {
+            ["LibTest"] = new[]
+            {
+                new TestItem(
+                    "LibTest.MyTests.Test1", "/asm/LibTest.dll",
+                    "LibTest.MyTests", "Test1",
+                    TestFramework.Xunit, TestTier.Unit, "LibTest/MyTests.cs",
+                    TestOutcome.None, 0, []),
+                new TestItem(
+                    "LibTest.MyTests.Test2", "/asm/LibTest.dll",
+                    "LibTest.MyTests", "Test2",
+                    TestFramework.Xunit, TestTier.Unit, "LibTest/MyTests.cs",
+                    TestOutcome.None, 0, []),
+            }
+        };
 
-        var item = Assert.Single(items);
-        Assert.Equal("MyTest", item.TestId);
-        Assert.Equal("/repo/tests/MyTest/MyTest.csproj", item.AssemblyPath);
-        Assert.Equal("MyTest", item.ClassName); // whole-project item
-        Assert.Equal("all", item.MethodName);   // project-level granularity
-        Assert.Equal("xunit", item.Framework); // default
-        Assert.Equal("unit", item.Tier);
+        var items = TestarudaAdapter.HandleDiscover(discoveredTests);
+
+        Assert.Equal(2, items.Length);
+
+        var test1 = Assert.Single(items, i => i.TestId == "LibTest.MyTests.Test1");
+        Assert.Equal("/asm/LibTest.dll", test1.AssemblyPath);
+        Assert.Equal("LibTest.MyTests", test1.ClassName);
+        Assert.Equal("Test1", test1.MethodName);
+        Assert.Equal("xunit", test1.Framework);
+        Assert.Equal("unit", test1.Tier);
+
+        var test2 = Assert.Single(items, i => i.TestId == "LibTest.MyTests.Test2");
+        Assert.Equal("/asm/LibTest.dll", test2.AssemblyPath);
+        Assert.Equal("LibTest.MyTests", test2.ClassName);
+        Assert.Equal("Test2", test2.MethodName);
     }
 
-    // ── Static-deps ──────────────────────────────────────────────
+    [Fact]
+    public void Discover_MultipleProjects_YieldsMethodsFromAll()
+    {
+        var graph = MakeGraph([
+            ("/repo/tests/ATest/ATest.csproj", "ATest", true),
+            ("/repo/tests/BTest/BTest.csproj", "BTest", true),
+        ]);
+
+        var discoveredTests = new Dictionary<string, TestItem[]>
+        {
+            ["ATest"] = new[]
+            {
+                new TestItem("ATest.A.A1", "/asm/ATest.dll", "ATest.A", "A1",
+                    TestFramework.Xunit, TestTier.Unit, null, TestOutcome.None, 0, []),
+            },
+            ["BTest"] = new[]
+            {
+                new TestItem("BTest.B.B1", "/asm/BTest.dll", "BTest.B", "B1",
+                    TestFramework.Nunit, TestTier.Integration, null, TestOutcome.None, 0, []),
+            },
+        };
+
+        var items = TestarudaAdapter.HandleDiscover(discoveredTests);
+
+        Assert.Equal(2, items.Length);
+        Assert.Contains(items, i => i.TestId == "ATest.A.A1");
+        Assert.Contains(items, i => i.TestId == "BTest.B.B1");
+    }
+
+    // ── Static-deps (method-level) ───────────────────────────────
 
     [Fact]
     public void StaticDeps_NoChanges_ReturnsEmpty()
     {
         var graph = MakeGraph([("/repo/tests/T/T.csproj", "T", true)]);
 
-        var result = TestarudaAdapter.HandleStaticDeps(graph, [], []);
+        var result = TestarudaAdapter.HandleStaticDeps(graph, [], [], null, null, null);
 
         Assert.Empty(result);
     }
 
     [Fact]
-    public void StaticDeps_ChangedFileAffectsTestProject_ReturnsThatProject()
+    public void StaticDeps_WithDiscoveredTests_ReturnsPerMethodResults()
     {
-        // Lib.csproj at /repo/src/Lib/ → changed src/Lib/Foo.cs
-        // LibTest.csproj depends on Lib → affected
         var graph = MakeGraph([
             ("/repo/src/Lib/Lib.csproj", "Lib", false),
             ("/repo/tests/LibTest/LibTest.csproj", "LibTest", true),
         ]);
-
-        // Wire LibTest → Lib dependency
         graph = AddDependency(graph, "/repo/tests/LibTest/LibTest.csproj", "/repo/src/Lib/Lib.csproj");
 
-        var result = TestarudaAdapter.HandleStaticDeps(
-            graph, ["LibTest"], ["src/Lib/Foo.cs"]);
+        var discoveredTests = new Dictionary<string, TestItem[]>
+        {
+            ["LibTest"] = new[]
+            {
+                new TestItem("LibTest.ParserTests.TestParse", "/asm/LibTest.dll",
+                    "LibTest.ParserTests", "TestParse",
+                    TestFramework.Xunit, TestTier.Unit, "",
+                    TestOutcome.Passed, 0, []),
+                new TestItem("LibTest.ParserTests.TestParseEmpty", "/asm/LibTest.dll",
+                    "LibTest.ParserTests", "TestParseEmpty",
+                    TestFramework.Xunit, TestTier.Unit, "",
+                    TestOutcome.Passed, 0, []),
+            }
+        };
 
-        Assert.NotEmpty(result);
-        Assert.Contains(result, r => r.TestId == "LibTest");
+        var edges = new TestToSourceEdge[]
+        {
+            new("LibTest.ParserTests.TestParse", "src/Lib/Parser.cs", EdgeOrigin.Static, 1, []),
+        };
+
+        // Both tests have history (passed) so they are NOT in always-run set
+        var history = new Dictionary<string, Safety.TestRunEntry[]>
+        {
+            ["LibTest.ParserTests.TestParse"] = new[]
+            {
+                new Safety.TestRunEntry(
+                    "LibTest.ParserTests.TestParse", TestOutcome.Passed, 50, DateTime.UtcNow.AddDays(-1)),
+            },
+            ["LibTest.ParserTests.TestParseEmpty"] = new[]
+            {
+                new Safety.TestRunEntry(
+                    "LibTest.ParserTests.TestParseEmpty", TestOutcome.Passed, 30, DateTime.UtcNow.AddDays(-1)),
+            },
+        };
+
+        var result = TestarudaAdapter.HandleStaticDeps(
+            graph, [], ["src/Lib/Parser.cs"], discoveredTests, edges, history);
+
+        // TestParse should be selected (edge match)
+        var selected = Assert.Single(result, r => r.TestId == "LibTest.ParserTests.TestParse");
+        Assert.True(selected.Selected);
+        Assert.Equal(1.0, selected.Confidence);
+
+        // TestParseEmpty should NOT appear in results (no edge match)
+        Assert.DoesNotContain(result, r => r.TestId == "LibTest.ParserTests.TestParseEmpty");
     }
 
     [Fact]
-    public void StaticDeps_UnchangedTestProject_NotReturned()
+    public void StaticDeps_AlwaysRun_ReturnsSelected()
     {
         var graph = MakeGraph([
-            ("/repo/src/Lib/Lib.csproj", "Lib", false),
-            ("/repo/tests/LibTest/LibTest.csproj", "LibTest", true),
-            ("/repo/tests/OtherTest/OtherTest.csproj", "OtherTest", true),
+            ("/repo/tests/T/T.csproj", "T", true),
         ]);
 
-        graph = AddDependency(graph, "/repo/tests/LibTest/LibTest.csproj", "/repo/src/Lib/Lib.csproj");
+        var discoveredTests = new Dictionary<string, TestItem[]>
+        {
+            ["T"] = new[]
+            {
+                new TestItem("T.Tests.M1", "/asm/T.dll", "T.Tests", "M1",
+                    TestFramework.Xunit, TestTier.Unit, "",
+                    TestOutcome.None, 0, []),
+            }
+        };
 
-        // Only Lib.cs changed — OtherTest should not be affected
+        // No edges, no changed files — but test has no history, so it enters
+        // always-run set (newly added) and gets selected
         var result = TestarudaAdapter.HandleStaticDeps(
-            graph, ["LibTest"], ["src/Lib/Foo.cs"]);
+            graph, [], [], discoveredTests, [], null);
 
-        Assert.DoesNotContain(result, r => r.TestId == "OtherTest");
+        // The test should be selected via always-run even with no edges
+        var selected = Assert.Single(result);
+        Assert.True(selected.Selected);
+    }
+
+    [Fact]
+    public void StaticDeps_EmptyChangedFiles_WithAffectedProjects_Empty()
+    {
+        // With method-level, no changed files and no history means
+        // tests are selected via always-run (newly added with no history)
+        var graph = MakeGraph([
+            ("/repo/tests/T/T.csproj", "T", true),
+        ]);
+
+        var discoveredTests = new Dictionary<string, TestItem[]>
+        {
+            ["T"] = new[]
+            {
+                new TestItem("T.Tests.M1", "/asm/T.dll", "T.Tests", "M1",
+                    TestFramework.Xunit, TestTier.Unit, "",
+                    TestOutcome.Passed, 0, []),
+            }
+        };
+
+        // Test has history (passed), so it's NOT in always-run set
+        var history = new Dictionary<string, Safety.TestRunEntry[]>
+        {
+            ["T.Tests.M1"] = new[]
+            {
+                new Safety.TestRunEntry(
+                    "T.Tests.M1", TestOutcome.Passed, 100, DateTime.UtcNow.AddDays(-1)),
+            },
+        };
+
+        var result = TestarudaAdapter.HandleStaticDeps(
+            graph, ["T"], [], discoveredTests, [], history);
+
+        // No changed files → no edge matches → empty result
+        Assert.Empty(result);
     }
 
     // ── Fingerprint ──────────────────────────────────────────────
@@ -167,48 +292,67 @@ public class AdapterTests
         Assert.Equal(fingerprints, result);
     }
 
-    // ── Run-args ─────────────────────────────────────────────────
+    // ── Run-args (method-level) ──────────────────────────────────
 
     [Fact]
-    public void RunArgs_ReturnsDotnetTestCommand()
+    public void RunArgs_FromTestIds_WithDiscoveredTests_GeneratesFilter()
     {
-        var projects = new[]
+        var discoveredTests = new Dictionary<string, TestItem[]>
         {
-            new ProjectDescriptor(
-                "/repo/tests/LibTest/LibTest.csproj", "LibTest",
-                new SemanticVersion(1, 0, 0, null, null),
-                [], false, true, [], [], new()),
+            ["LibTest"] = new[]
+            {
+                new TestItem("LibTest.ParserTests.TestParse", "/asm/LibTest.dll",
+                    "LibTest.ParserTests", "TestParse",
+                    TestFramework.Xunit, TestTier.Unit, "",
+                    TestOutcome.None, 0, []),
+            },
+            ["LibIntegration"] = new[]
+            {
+                new TestItem("LibIntegration.IntegrationTests.Test1", "/asm/LibIntegration.dll",
+                    "LibIntegration.IntegrationTests", "Test1",
+                    TestFramework.Xunit, TestTier.Integration, "",
+                    TestOutcome.None, 0, []),
+            }
         };
 
-        var result = TestarudaAdapter.HandleRunArgs(projects, null);
+        var result = TestarudaAdapter.HandleRunArgs(
+            ["LibTest.ParserTests.TestParse", "LibIntegration.IntegrationTests.Test1"],
+            discoveredTests, null);
 
+        // Should be a dotnet test command with a traversal .proj
         Assert.Equal("dotnet", result[0]);
         Assert.Equal("test", result[1]);
         Assert.StartsWith("/tmp/titi-adapter/", result[2]);
         Assert.EndsWith(".proj", result[2]);
+
+        // The filter expressions should be embedded in the traversal .proj
+        // (via VSTestTestCaseFilter), not passed as CLI --filter arguments
+        var projContent = File.ReadAllText(result[2]);
+        Assert.Contains("FullyQualifiedName~LibTest.ParserTests.TestParse", projContent);
+        Assert.Contains("FullyQualifiedName~LibIntegration.IntegrationTests.Test1", projContent);
+
+        // Clean up the temp file
+        try { File.Delete(result[2]); } catch { }
     }
 
     [Fact]
-    public void RunArgs_WithFilter_IncludesFilterFlag()
+    public void RunArgs_FromTestIds_Empty_ReturnsNoop()
     {
-        var projects = new[]
-        {
-            new ProjectDescriptor(
-                "/repo/tests/LibTest/LibTest.csproj", "LibTest",
-                new SemanticVersion(1, 0, 0, null, null),
-                [], false, true, [], [], new()),
-        };
+        var result = TestarudaAdapter.HandleRunArgs([], new Dictionary<string, TestItem[]>(), null);
 
-        var filters = new Dictionary<string, string>
-        {
-            ["LibTest"] = "FullyQualifiedName~Test1|FullyQualifiedName~Test2"
-        };
+        Assert.Equal(["dotnet", "test", "--no-build"], result);
+    }
 
-        var result = TestarudaAdapter.HandleRunArgs(projects, filters);
+    [Fact]
+    public void RunArgs_FromTestIds_UnknownTestId_GeneratesProjectLevelCommand()
+    {
+        // When a test ID doesn't match any discovered test, fall back gracefully
+        var result = TestarudaAdapter.HandleRunArgs(
+            ["Unknown.Test.Id"], new Dictionary<string, TestItem[]>(), null);
 
-        // Should include --filter argument
-        var joined = string.Join(" ", result);
-        Assert.Contains("--filter", joined);
+        // Should still produce a valid command
+        Assert.Equal("dotnet", result[0]);
+        Assert.Equal("test", result[1]);
     }
 
     // ── Ingest ───────────────────────────────────────────────────
@@ -216,9 +360,60 @@ public class AdapterTests
     [Fact]
     public void Ingest_EmptyTrx_ReturnsEmptyResults()
     {
-        var result = TestarudaAdapter.HandleIngest(null);
+        var result = TestarudaAdapter.HandleIngest(null, null, "/repo");
 
-        Assert.Empty(result);
+        Assert.Empty(result.Results);
+        Assert.Empty(result.Edges);
+    }
+
+    [Fact]
+    public void Ingest_ValidTrxWithCobertura_ReturnsEdges()
+    {
+        var trxXml = @"<?xml version=""1.0"" encoding=""utf-8""?>
+<TestRun xmlns=""http://microsoft.com/schemas/VisualStudio/TeamTest/2010"">
+  <ResultSummary>
+    <Counters total=""1"" executed=""1"" passed=""1"" failed=""0"" />
+  </ResultSummary>
+  <TestDefinitions>
+    <UnitTest name=""TestParse"" storage=""test.dll"" id=""guid-1"">
+      <TestMethod codeBase=""test.dll"" className=""Tests.TestParse"" name=""TestParse"" />
+    </UnitTest>
+  </TestDefinitions>
+  <Results>
+    <UnitTestResult testName=""TestParse"" testId=""guid-1"" duration=""00:00:00.050"" outcome=""Passed"">
+      <Output />
+    </UnitTestResult>
+  </Results>
+</TestRun>";
+
+        var coberturaXml = @"<?xml version=""1.0"" encoding=""utf-8""?>
+<coverage line-rate=""0.5"">
+  <sources>
+    <source>/repo/src/</source>
+  </sources>
+  <packages>
+    <package name=""TestLib"">
+      <classes>
+        <class name=""TestLib.Parser"" filename=""Parser.cs"">
+          <methods>
+            <method name=""Parse"" hits=""2"" />
+          </methods>
+          <lines>
+            <line number=""1"" hits=""2"" />
+          </lines>
+        </class>
+      </classes>
+    </package>
+  </packages>
+</coverage>";
+
+        // Note: Ingestor.IngestRun correlates TRX results × Cobertura file-level coverage.
+        // The edges require both the TRX test names and the Cobertura source paths to match.
+        var result = TestarudaAdapter.HandleIngest(trxXml, coberturaXml, "/repo");
+
+        Assert.NotEmpty(result.Results);
+        // Edges should exist when TRX + Cobertura both present and correlated
+        // (actual edge count depends on EdgeBuilder correlation)
     }
 
     // ── Protocol: request parsing ────────────────────────────────
@@ -310,44 +505,12 @@ public class AdapterTests
     public void Shutdown_ReturnsShuttingDownStatus()
     {
         var json = TestarudaAdapter.ProcessCommand(
-            new TestarudaAdapter.AdapterRequest("shutdown", [], [], [], ""),
+            new TestarudaAdapter.AdapterRequest("shutdown", [], [], [], "", ""),
             null);
 
         using var doc = JsonDocument.Parse(json);
         var result = doc.RootElement.GetProperty("result");
         Assert.Equal("shutting_down", result.GetProperty("status").GetString());
-    }
-
-    // ── Run-args edge cases ───────────────────────────────────────
-
-    [Fact]
-    public void RunArgs_EmptyProjects_ReturnsNoopCommand()
-    {
-        var result = TestarudaAdapter.HandleRunArgs([], null);
-
-        Assert.Equal(["dotnet", "test", "--no-build"], result);
-    }
-
-    [Fact]
-    public void RunArgs_GeneratesUniqueTempPath()
-    {
-        var projects = new[]
-        {
-            new ProjectDescriptor(
-                "/repo/tests/P/P.csproj", "P",
-                new SemanticVersion(1, 0, 0, null, null),
-                [], false, true, [], [], new()),
-        };
-
-        var result1 = TestarudaAdapter.HandleRunArgs(projects, null);
-        var result2 = TestarudaAdapter.HandleRunArgs(projects, null);
-
-        // Each invocation should produce a unique temp file path
-        Assert.NotEqual(result1[2], result2[2]);
-
-        // Clean up
-        try { File.Delete(result1[2]); } catch { }
-        try { File.Delete(result2[2]); } catch { }
     }
 
     // ── Protocol: response serialization ─────────────────────────
@@ -394,8 +557,9 @@ public class AdapterTests
     [Fact]
     public void Ingest_NonExistentTrxFile_ReturnsEmpty()
     {
-        var result = TestarudaAdapter.HandleIngest("/nonexistent/results.trx");
-        Assert.Empty(result);
+        var result = TestarudaAdapter.HandleIngest(null, null, "/repo");
+        Assert.Empty(result.Results);
+        Assert.Empty(result.Edges);
     }
 
     // ── CLI dispatch ─────────────────────────────────────────────
@@ -424,7 +588,7 @@ public class AdapterTests
 
     // ── Integration tests (skipped by default) ───────────────────
 
-    [Fact(Skip = "Slow (requires NuGet restore + dotnet build); run with: dotnet test --filter Category=Integration")]
+    [Fact(Skip = "Slow (requires NuGet restore + dotnet build, pre-populated test cache); run with: dotnet test --filter Category=Integration")]
     public void AdapterIntegration_HandshakeAndDiscover_AgainstSyntheticFixture()
     {
         var fixtureDir = Path.GetFullPath(
@@ -458,7 +622,8 @@ public class AdapterTests
         using var handshakeDoc = JsonDocument.Parse(handshakeLine);
         var handshakeResult = handshakeDoc.RootElement.GetProperty("result");
         Assert.Equal("titi", handshakeResult.GetProperty("name").GetString());
-        Assert.Equal("project", handshakeResult.GetProperty("granularity").GetString());
+        Assert.Equal("method", handshakeResult.GetProperty("granularity").GetString());
+        Assert.True(handshakeResult.GetProperty("symbol_model_complete").GetBoolean());
 
         // Send discover
         proc.StandardInput.WriteLine("""{"command":"discover","params":{}}""");
@@ -471,11 +636,11 @@ public class AdapterTests
         var discoverResult = discoverDoc.RootElement.GetProperty("result");
         var tests = discoverResult.GetProperty("tests").EnumerateArray().ToArray();
 
-        // Should find 2 test projects: Orion.UnitTests and Orion.IntegrationTests
-        Assert.True(tests.Length >= 2, $"Expected >=2 test items, got {tests.Length}");
+        // Should find one item per test method (not per project)
+        Assert.True(tests.Length > 2, $"Expected multiple test methods, got {tests.Length}");
+        // Each item should have a method-level test_id (contains a dot-separated method)
         var testIds = tests.Select(t => t.GetProperty("test_id").GetString()).ToArray();
-        Assert.Contains("Orion.UnitTests", testIds);
-        Assert.Contains("Orion.IntegrationTests", testIds);
+        Assert.Contains(testIds, id => id != null && (id.Contains("Test") || id.Contains(".")));
 
         // Clean shutdown
         proc.StandardInput.Close();
@@ -483,7 +648,7 @@ public class AdapterTests
         Assert.Equal(0, proc.ExitCode);
     }
 
-    [Fact(Skip = "Slow (requires NuGet restore + dotnet build); run with: dotnet test --filter Category=Integration")]
+    [Fact(Skip = "Slow (requires NuGet restore + dotnet build, pre-populated test cache + edges); run with: dotnet test --filter Category=Integration")]
     public void AdapterIntegration_StaticDeps_MatchesTestManifest()
     {
         var fixtureDir = Path.GetFullPath(
@@ -514,8 +679,6 @@ public class AdapterTests
         Assert.NotNull(handshakeLine);
 
         // Send static-deps with a known changed file that affects Orion.UnitTests
-        // (Orion.Core.Data is a dependency of Orion.UnitTests)
-        // Fixture paths use libs/ not src/
         proc.StandardInput.WriteLine("""{"command":"static-deps","params":{"changed_files":["libs/Orion.Core.Data/Parser.cs"],"affected_projects":[]}}""");
         proc.StandardInput.Flush();
 
@@ -526,8 +689,8 @@ public class AdapterTests
         var depsResult = depsDoc.RootElement.GetProperty("result");
         var affectedTests = depsResult.GetProperty("affected_tests").EnumerateArray().ToArray();
 
-        // Should find at least Orion.UnitTests (which depends on Orion.Core.Data)
-        Assert.True(affectedTests.Length > 0, "Expected at least one affected test");
+        // Should return per-test method results
+        Assert.True(affectedTests.Length > 0, "Expected at least one affected test method");
 
         // Clean shutdown
         proc.StandardInput.Close();

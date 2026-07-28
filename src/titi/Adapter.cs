@@ -1,16 +1,20 @@
 // TID-12: testaruda adapter subcommand (CLI-19)
-// Phase 1: project-level granularity, symbol_model_complete: false
+// Phase 2: method-level granularity, symbol_model_complete: true
 //
 // JSON-over-stdio adapter protocol. One JSON object per line on both stdin
 // (requests) and stdout (responses). The adapter builds or loads the
 // MonorepoGraph once during handshake and answers all commands from
-// in-memory state.
+// in-memory state. Test items are pre-discovered during startup or passed
+// by the caller for method-level granularity.
 
 namespace titi.Adapter;
 
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using titi.Affected;
+using titi.Safety;
+using titi.TestManifest;
+using titi.TestDiscovery;
 
 /// <summary>
 /// Handles the testaruda adapter protocol: handshake, discover, static-deps,
@@ -29,7 +33,7 @@ public static class TestarudaAdapter
         [property: JsonPropertyName("runtime_edges")] bool RuntimeEdges
     );
 
-    /// <summary>An adapter test item (project-level granularity in Phase 1).</summary>
+    /// <summary>An adapter test item (method-level granularity in Phase 2).</summary>
     public record AdapterTestItem(
         [property: JsonPropertyName("test_id")] string TestId,
         [property: JsonPropertyName("assembly_path")] string AssemblyPath,
@@ -53,11 +57,10 @@ public static class TestarudaAdapter
         [property: JsonPropertyName("confidence")] double Confidence
     );
 
-    /// <summary>An ingest result item.</summary>
-    public record IngestResult(
-        [property: JsonPropertyName("test_name")] string TestName,
-        [property: JsonPropertyName("outcome")] string Outcome,
-        [property: JsonPropertyName("duration_ms")] long DurationMs
+    /// <summary>An ingest result with both test results and correlation edges.</summary>
+    public record MethodIngestResult(
+        Coverage.TrxTestResult[] Results,
+        TestToSourceEdge[] Edges
     );
 
     // ── Request types ────────────────────────────────────────────
@@ -68,87 +71,112 @@ public static class TestarudaAdapter
         string[] ChangedFiles,
         string[] AffectedProjects,
         string[] TestIds,
-        string TrxPath
+        string TrxPath,
+        string CoberturaPath
     );
 
     // ── Handshake ────────────────────────────────────────────────
 
-    /// <summary>Produce the handshake response.</summary>
+    /// <summary>Produce the handshake response (method-level).</summary>
     public static HandshakeResponse HandleHandshake()
     {
         return new HandshakeResponse(
             Name: "titi",
             Languages: ["csharp"],
-            Granularity: "project",
-            SymbolModelComplete: false,
+            Granularity: "method",
+            SymbolModelComplete: true,
             RuntimeEdges: false
         );
     }
 
-    // ── Discover ─────────────────────────────────────────────────
-
-    /// <summary>Emit one test item per test project in the graph.</summary>
-    public static AdapterTestItem[] HandleDiscover(MonorepoGraph graph)
-    {
-        return graph.Nodes.Values
-            .Where(n => n.Project.IsTestProject)
-            .Select(n => new AdapterTestItem(
-                testId: n.Project.PackageId,
-                assemblyPath: n.Project.Path,
-                className: n.Project.PackageId,
-                methodName: "all",
-                framework: TestFramework.Xunit,  // default for project-level
-                tier: TestTier.Unit              // default tier
-            ))
-            .ToArray();
-    }
-
-    // ── Static-deps ──────────────────────────────────────────────
+    // ── Discover (method-level) ──────────────────────────────────
 
     /// <summary>
-    /// Return affected test items. Uses titi's AffectedSet computation.
-    /// In Phase 1 (project-level), each test item is a whole project.
+    /// Emit one test item per method from pre-discovered test items.
+    /// When <paramref name="discoveredTests"/> is null or empty, returns empty
+    /// (no test items discovered yet). Tests are keyed by their owning
+    /// project's PackageId.
     /// </summary>
-    public static StaticDepsItem[] HandleStaticDeps(
-        MonorepoGraph graph, string[] affectedProjects, string[] changedFiles)
+    public static AdapterTestItem[] HandleDiscover(
+        Dictionary<string, TestItem[]>? discoveredTests)
     {
-        // Build a minimal AffectedSet from the pre-computed affected projects
-        // and the changed files list.
-        var directlyAffected = new List<ProjectDescriptor>();
-        var transitivelyAffected = new List<ProjectDescriptor>();
+        if (discoveredTests == null || discoveredTests.Count == 0)
+            return [];
 
-        foreach (var pkgId in affectedProjects)
+        var items = new List<AdapterTestItem>();
+
+        foreach (var (pkgId, tests) in discoveredTests)
         {
-            var node = graph.Nodes.Values
-                .FirstOrDefault(n => n.Project.PackageId == pkgId);
-            if (node != null)
+            foreach (var test in tests)
             {
-                directlyAffected.Add(node.Project);
+                items.Add(new AdapterTestItem(
+                    testId: test.TestId,
+                    assemblyPath: test.AssemblyPath,
+                    className: test.ClassName,
+                    methodName: test.MethodName,
+                    framework: test.Framework,
+                    tier: test.Tier
+                ));
             }
         }
 
-        // If no affected projects provided, use the full affected set computation
-        if (directlyAffected.Count == 0 && changedFiles.Length > 0)
-        {
-            var affectedSet = Analyzer.BuildAffectedSet(changedFiles, graph);
-            directlyAffected.AddRange(affectedSet.DirectlyAffected);
-            transitivelyAffected.AddRange(affectedSet.TransitivelyAffected);
-        }
+        return items.ToArray();
+    }
 
-        var allAffected = directlyAffected
-            .Concat(transitivelyAffected)
-            .Where(p => p.IsTestProject)
-            .DistinctBy(p => p.PackageId)
-            .ToArray();
+    // ── Static-deps (method-level) ───────────────────────────────
 
-        if (allAffected.Length == 0)
+    /// <summary>
+    /// Return per-method selection results using pre-discovered test items,
+    /// edges, and changed files. When test-item data is missing, falls back
+    /// to project-level empty result (no method-level analysis possible).
+    /// </summary>
+    public static StaticDepsItem[] HandleStaticDeps(
+        MonorepoGraph graph,
+        string[] affectedProjects,
+        string[] changedFiles,
+        Dictionary<string, TestItem[]>? discoveredTests,
+        TestToSourceEdge[]? edges,
+        Dictionary<string, Safety.TestRunEntry[]>? history)
+    {
+        if (discoveredTests == null || discoveredTests.Count == 0)
             return [];
 
-        return allAffected.Select(p => new StaticDepsItem(
-            TestId: p.PackageId,
-            Selected: true,
-            Confidence: 1.0  // project-level, full confidence
-        )).ToArray();
+        // Flatten all test items from discovered projects
+        var allItems = discoveredTests.Values
+            .SelectMany(t => t)
+            .ToArray();
+
+        if (allItems.Length == 0)
+            return [];
+
+        // Build always-run set from history (flatten to latest entry per test)
+        Dictionary<string, Safety.TestRunEntry> flattenedHistory = new();
+        if (history != null)
+        {
+            foreach (var (testId, entries) in history)
+            {
+                if (entries.Length > 0)
+                    flattenedHistory[testId] = entries.OrderByDescending(e => e.Timestamp).First();
+            }
+        }
+        var alwaysRun = Selection.ComputeAlwaysRunSet(allItems, flattenedHistory);
+
+        // Compute selected tests using edges and changed files
+        var selectedTests = Selection.ComputeSelectedTests(
+            allItems,
+            edges ?? [],
+            alwaysRun,
+            changedFiles);
+
+        // Map selected tests to StaticDepsItem with method-level granularity
+        return selectedTests
+            .Where(s => s.Selected)
+            .Select(s => new StaticDepsItem(
+                TestId: s.TestId,
+                Selected: s.Selected,
+                Confidence: s.Confidence
+            ))
+            .ToArray();
     }
 
     // ── Fingerprint ──────────────────────────────────────────────
@@ -159,61 +187,119 @@ public static class TestarudaAdapter
         return new Dictionary<string, string>(graph.Fingerprints);
     }
 
-    // ── Run-args ─────────────────────────────────────────────────
+    // ── Run-args (method-level) ──────────────────────────────────
 
     /// <summary>
-    /// Generate a dotnet test command for the given test projects.
-    /// When filters are provided, generates a Traversal .proj with VSTestTestCaseFilter.
+    /// Generate a dotnet test command with per-test --filter expressions.
+    /// Takes test IDs, the full set of discovered test items, and a map of
+    /// packageId → ProjectDescriptor from the graph. Groups selected tests by
+    /// project and produces a traversal .proj with per-project
+    /// VSTestTestCaseFilter.
     /// </summary>
     public static string[] HandleRunArgs(
-        ProjectDescriptor[] projects,
-        Dictionary<string, string>? projectFilters)
+        string[] testIds,
+        Dictionary<string, TestItem[]> discoveredTests,
+        Dictionary<string, ProjectDescriptor>? projectMap)
     {
-        if (projects.Length == 0)
+        if (testIds.Length == 0)
             return ["dotnet", "test", "--no-build"];
 
-        // Write the traversal to a unique temp path per invocation
+        // Build reverse maps: testId → TestItem, testId → PackageId
+        var testIdToItem = new Dictionary<string, TestItem>(StringComparer.Ordinal);
+        var pkgByTestId = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var (pkgId, tests) in discoveredTests)
+        {
+            foreach (var test in tests)
+            {
+                testIdToItem[test.TestId] = test;
+                pkgByTestId[test.TestId] = pkgId;
+            }
+        }
+
+        // Group selected test IDs by project
+        var projectTestItems = new Dictionary<string, List<TestItem>>(StringComparer.Ordinal);
+        foreach (var testId in testIds)
+        {
+            if (testIdToItem.TryGetValue(testId, out var item) &&
+                pkgByTestId.TryGetValue(testId, out var pkgId))
+            {
+                if (!projectTestItems.ContainsKey(pkgId))
+                    projectTestItems[pkgId] = new List<TestItem>();
+                projectTestItems[pkgId].Add(item);
+            }
+        }
+
+        if (projectTestItems.Count == 0)
+            return ["dotnet", "test"];
+
+        // Build per-project filters and resolve real ProjectDescriptor from map
+        var projectFilters = new Dictionary<string, string>(StringComparer.Ordinal);
+        var projects = new List<ProjectDescriptor>();
+
+        foreach (var (pkgId, items) in projectTestItems)
+        {
+            var framework = FilterExprBuilder.GetCommonFramework(items.ToArray());
+            if (framework == null)
+                continue;
+
+            var filterExpr = FilterExprBuilder.BuildFilter(items.ToArray(), framework.Value);
+            if (filterExpr != null)
+                projectFilters[pkgId] = filterExpr;
+
+            // Resolve the actual ProjectDescriptor from the project map
+            // (which contains real paths for the traversal .proj Include attribute)
+            ProjectDescriptor project;
+            if (projectMap != null && projectMap.TryGetValue(pkgId, out var mapped))
+            {
+                project = mapped;
+            }
+            else
+            {
+                // Fallback: create a minimal descriptor (path may be invalid)
+                project = new ProjectDescriptor(
+                    pkgId, pkgId,
+                    new SemanticVersion(1, 0, 0, null, null),
+                    [], false, true, [], [], new());
+            }
+            projects.Add(project);
+        }
+
+        if (projects.Count == 0)
+            return ["dotnet", "test"];
+
+        // Write traversal .proj and return command
         var tempDir = Path.Combine(Path.GetTempPath(), "titi-adapter");
         Directory.CreateDirectory(tempDir);
         var traversalPath = Path.Combine(tempDir, $"test-manifest-{Guid.NewGuid():N}.proj");
 
-        var xml = TestManifest.TraversalGenerator.Generate(projects, projectFilters);
+        var xml = TraversalGenerator.Generate(projects.ToArray(),
+            projectFilters.Count > 0 ? projectFilters : null);
         File.WriteAllText(traversalPath, xml);
-
-        if (projectFilters != null && projectFilters.Count > 0)
-        {
-            // With per-project filters, pass them via --filter
-            var allFilters = string.Join(" | ",
-                projectFilters.Values.Where(v => !string.IsNullOrEmpty(v)));
-            return ["dotnet", "test", traversalPath, "--filter", $"\"{allFilters}\""];
-        }
 
         return ["dotnet", "test", traversalPath];
     }
 
-    // ── Ingest ───────────────────────────────────────────────────
+    // ── Ingest (method-level, with edge building) ────────────────
 
-    /// <summary>Parse a TRX file and return per-test results.</summary>
-    public static IngestResult[] HandleIngest(string? trxPath)
+    /// <summary>
+    /// Parse TRX results and optionally correlate with Cobertura coverage
+    /// to build TestToSourceEdge records. This is the method-level equivalent:
+    /// it delegates to Ingestor.IngestRun for full correlation.
+    /// </summary>
+    public static MethodIngestResult HandleIngest(
+        string? trxXml,
+        string? coberturaXml,
+        string sourceRoot)
     {
-        if (trxPath == null || !File.Exists(trxPath))
-            return [];
+        if (string.IsNullOrEmpty(trxXml))
+            return new MethodIngestResult([], []);
 
-        try
-        {
-            var trxXml = File.ReadAllText(trxPath);
-            var results = Coverage.Parser.ParseTrx(trxXml);
+        var ingestResult = Ingestor.IngestRun(
+            trxXml, coberturaXml, sourceRoot);
 
-            return results.Select(r => new IngestResult(
-                TestName: r.TestName,
-                Outcome: r.Outcome.ToString().ToLower(),
-                DurationMs: r.DurationMs
-            )).ToArray();
-        }
-        catch
-        {
-            return [];
-        }
+        return new MethodIngestResult(
+            ingestResult.Results,
+            ingestResult.Edges);
     }
 
     // ── Request parsing ──────────────────────────────────────────
@@ -231,6 +317,7 @@ public static class TestarudaAdapter
             var affectedProjects = Array.Empty<string>();
             var testIds = Array.Empty<string>();
             var trxPath = "";
+            var coberturaPath = "";
 
             // Parse params if present (params-style protocol, matching all adapters)
             if (root.TryGetProperty("params", out var paramsEl))
@@ -246,9 +333,12 @@ public static class TestarudaAdapter
 
                 if (paramsEl.TryGetProperty("trx_path", out var tp))
                     trxPath = tp.GetString() ?? "";
+
+                if (paramsEl.TryGetProperty("cobertura_path", out var cp))
+                    coberturaPath = cp.GetString() ?? "";
             }
 
-            return new AdapterRequest(command, changedFiles, affectedProjects, testIds, trxPath);
+            return new AdapterRequest(command, changedFiles, affectedProjects, testIds, trxPath, coberturaPath);
         }
         catch
         {
@@ -295,20 +385,30 @@ public static class TestarudaAdapter
     }
 
     /// <summary>Format ingest results as JSON.</summary>
-    public static string FormatResponse(IngestResult[] results)
+    public static string FormatResponse(MethodIngestResult results)
     {
-        return JsonSerializer.Serialize(new { result = new { results } });
+        return JsonSerializer.Serialize(new { result = new
+        {
+            results = results.Results,
+            edges = results.Edges
+        } });
     }
 
     // ── Main loop ────────────────────────────────────────────────
 
     /// <summary>
     /// Run the adapter main loop: read JSON commands from stdin, process them,
-    /// write JSON responses to stdout. This is the entry point for the
-    /// titi testaruda-adapter subcommand.
+    /// write JSON responses to stdout. Pre-discovers test items for all test
+    /// projects during startup when cache and graph are available.
     /// </summary>
     public static int RunLoop(MonorepoGraph? graph, TextReader stdin, TextWriter stdout)
     {
+        // In Phase 2, we attempt to pre-discover test items from the graph's
+        // test projects during startup. This happens once, before the loop.
+        // When test-item cache doesn't exist yet, discoveredTests will be empty
+        // and the adapter falls back gracefully (returns empty lists).
+        var discoveredTests = DiscoverAllTestItems(graph);
+
         string? line;
         while ((line = stdin.ReadLine()) != null)
         {
@@ -323,7 +423,7 @@ public static class TestarudaAdapter
                 continue;
             }
 
-            var responseJson = ProcessCommand(request, graph, stdout);
+            var responseJson = ProcessCommand(request, graph, discoveredTests, stdout);
             stdout.WriteLine(responseJson);
             stdout.Flush();
         }
@@ -332,7 +432,11 @@ public static class TestarudaAdapter
     }
 
     /// <summary>Process a single adapter command and return the response JSON.</summary>
-    public static string ProcessCommand(AdapterRequest request, MonorepoGraph? graph, TextWriter? stderr = null)
+    public static string ProcessCommand(
+        AdapterRequest request,
+        MonorepoGraph? graph,
+        Dictionary<string, TestItem[]>? discoveredTests = null,
+        TextWriter? stderr = null)
     {
         switch (request.Command)
         {
@@ -342,12 +446,16 @@ public static class TestarudaAdapter
             case "discover":
                 if (graph == null)
                     return FormatErrorResponse("Graph not available (handshake did not complete)");
-                return FormatResponse(HandleDiscover(graph));
+                return FormatResponse(HandleDiscover(discoveredTests));
 
             case "static-deps":
                 if (graph == null)
                     return FormatErrorResponse("Graph not available (handshake did not complete)");
-                return FormatResponse(HandleStaticDeps(graph, request.AffectedProjects, request.ChangedFiles));
+                var edges = LoadEdgesFromCache(graph.RepoRoot);
+                var history = LoadHistoryFromCache(graph.RepoRoot);
+                return FormatResponse(HandleStaticDeps(
+                    graph, request.AffectedProjects, request.ChangedFiles,
+                    discoveredTests, edges, history));
 
             case "fingerprint":
                 if (graph == null)
@@ -355,12 +463,18 @@ public static class TestarudaAdapter
                 return FormatResponse(HandleFingerprint(graph));
 
             case "run-args":
-                if (graph == null)
-                    return FormatErrorResponse("Graph not available (handshake did not complete)");
-                return FormatResponse(HandleRunArgsFromTestIds(graph, request.TestIds));
+                var projectMap = BuildProjectMap(graph);
+                return FormatResponse(HandleRunArgs(request.TestIds, discoveredTests ?? new(), projectMap));
 
             case "ingest":
-                return FormatResponse(HandleIngest(request.TrxPath));
+                var coberturaXml = !string.IsNullOrEmpty(request.CoberturaPath) && File.Exists(request.CoberturaPath)
+                    ? File.ReadAllText(request.CoberturaPath)
+                    : null;
+                var trxXml = !string.IsNullOrEmpty(request.TrxPath) && File.Exists(request.TrxPath)
+                    ? File.ReadAllText(request.TrxPath)
+                    : null;
+                var sourceRoot = graph?.RepoRoot ?? Environment.CurrentDirectory;
+                return FormatResponse(HandleIngest(trxXml, coberturaXml, sourceRoot));
 
             case "shutdown":
                 return JsonSerializer.Serialize(new { result = new { status = "shutting_down" } });
@@ -370,16 +484,68 @@ public static class TestarudaAdapter
         }
     }
 
+    // ── Helpers ──────────────────────────────────────────────────
+
     /// <summary>
-    /// Resolve test IDs to ProjectDescriptor[] and generate run-args.
+    /// Discover all test items from test projects in the graph.
+    /// Uses DiscoveryCache to load or run discovery. When the cache doesn't
+    /// exist or discovery fails for a project, that project is skipped.
     /// </summary>
-    static string[] HandleRunArgsFromTestIds(MonorepoGraph graph, string[] testIds)
+    static Dictionary<string, TestItem[]> DiscoverAllTestItems(MonorepoGraph? graph)
     {
-        var projects = graph.Nodes.Values
-            .Where(n => testIds.Contains(n.Project.PackageId))
-            .Select(n => n.Project)
+        if (graph == null)
+            return new();
+
+        var cacheDir = Path.Combine(graph.RepoRoot, ".titi", "test-cache");
+        var result = new Dictionary<string, TestItem[]>(StringComparer.Ordinal);
+
+        var testProjects = graph.Nodes.Values
+            .Where(n => n.Project.IsTestProject)
             .ToArray();
 
-        return HandleRunArgs(projects, null);
+        foreach (var node in testProjects)
+        {
+            var proj = node.Project;
+            var projDir = Path.GetDirectoryName(proj.Path) ?? "";
+            var fingerprint = DiscoveryCache.ComputeFingerprint(projDir, proj.Path);
+            var items = DiscoveryCache.GetOrDiscover(cacheDir, proj.PackageId, fingerprint, () =>
+            {
+                // In the adapter subprocess context, we can't run dotnet test
+                // interactively — this callback should only fire when the cache
+                // is pre-populated (e.g., by a prior `titi tests list` run).
+                return [];
+            });
+            if (items.Length > 0)
+                result[proj.PackageId] = items;
+        }
+
+        return result;
     }
+
+    /// <summary>Load edges from the test-cache, relative to the repo root.</summary>
+    static TestToSourceEdge[] LoadEdgesFromCache(string repoRoot)
+    {
+        var cacheDir = Path.Combine(repoRoot, ".titi", "test-cache");
+        return SelectionLoader.LoadEdges(cacheDir);
+    }
+
+    /// <summary>Load test-run history from the test-cache.</summary>
+    static Dictionary<string, Safety.TestRunEntry[]> LoadHistoryFromCache(string repoRoot)
+    {
+        var cacheDir = Path.Combine(repoRoot, ".titi", "test-cache");
+        return SelectionLoader.LoadHistory(cacheDir);
+    }
+
+    /// <summary>Build a packageId → ProjectDescriptor map from the graph.</summary>
+    static Dictionary<string, ProjectDescriptor> BuildProjectMap(MonorepoGraph? graph)
+    {
+        if (graph == null)
+            return new();
+
+        return graph.Nodes.Values
+            .Select(n => n.Project)
+            .ToDictionary(p => p.PackageId, p => p, StringComparer.Ordinal);
+    }
+
+
 }
