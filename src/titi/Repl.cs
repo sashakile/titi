@@ -152,7 +152,7 @@ public static class ReplEngine
             n.Project.PackageId.Equals(packageId, StringComparison.OrdinalIgnoreCase));
     }
 
-        static void PrintPath(MonorepoGraph graph, string[] args, TextWriter output, TextWriter error)
+    static void PrintPath(MonorepoGraph graph, string[] args, TextWriter output, TextWriter error)
     {
         if (args.Length < 2)
         {
@@ -256,7 +256,7 @@ public static class ReplEngine
         for (int i = 0; i < args.Length; i++)
         {
             if (args[i] == "--from" && i + 1 < args.Length)
-                baseRef = args[i + 1];
+                baseRef = args[++i];
         }
 
         // Get changed files from git
@@ -317,7 +317,7 @@ public static class ReplEngine
             if (args[i] == "--depth" && i + 1 < args.Length)
             {
                 if (int.TryParse(args[i + 1], out var d) && d >= 0)
-                    maxDepth = d;
+                    maxDepth = Math.Min(d, 50);
                 else
                     error.WriteLine($"Warning: invalid depth '{args[i + 1]}', using default 3");
             }
