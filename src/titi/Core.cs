@@ -175,13 +175,19 @@ public static class Program
             Console.Error.WriteLine($"Discovering test items from {affectedTestProjects.Length} affected test project(s)...");
             foreach (var proj in affectedTestProjects)
             {
-                var (stdout, stderr, ok) = RunDotnetListTests(proj.Path, repoRoot);
-                if (!ok)
+                var projDir = Path.GetDirectoryName(proj.Path) ?? "";
+                var fingerprint = titi.TestDiscovery.DiscoveryCache.ComputeFingerprint(projDir, proj.Path);
+                var items = titi.TestDiscovery.DiscoveryCache.GetOrDiscover(cacheDir, proj.PackageId, fingerprint, () =>
                 {
-                    Console.Error.WriteLine($"  warning: list-tests failed for {proj.PackageId}: {stderr.Split('\n').FirstOrDefault()}");
-                    continue;
-                }
-                allItems.AddRange(titi.TestDiscovery.Parser.Parse(stdout, TestTier.Unit));
+                    var (stdout, stderr, ok) = RunDotnetListTests(proj.Path, repoRoot);
+                    if (!ok)
+                    {
+                        Console.Error.WriteLine($"  warning: list-tests failed for {proj.PackageId}: {stderr.Split('\n').FirstOrDefault()}");
+                        return [];
+                    }
+                    return titi.TestDiscovery.Parser.Parse(stdout, TestTier.Unit);
+                });
+                allItems.AddRange(items);
             }
         }
 
@@ -206,48 +212,63 @@ public static class Program
         }
 
         Console.Error.WriteLine($"Listing tests for {projectPath}...");
-        try
+
+        var repoRoot = Environment.CurrentDirectory;
+        var cacheDir = Path.Combine(repoRoot, ".titi", "test-cache");
+        var projDir = Path.GetDirectoryName(projectPath) ?? "";
+        var fingerprint = titi.TestDiscovery.DiscoveryCache.ComputeFingerprint(projDir, projectPath);
+        // Use the project path as cache key (sanitized) so two projects with
+        // the same filename in different directories don't collide.
+        var cacheKey = projDir.Length > 0
+            ? $"{projDir.Replace(Path.DirectorySeparatorChar, '.')}.{Path.GetFileNameWithoutExtension(projectPath)}"
+            : Path.GetFileNameWithoutExtension(projectPath);
+
+        var items = titi.TestDiscovery.DiscoveryCache.GetOrDiscover(cacheDir, cacheKey, fingerprint, () =>
         {
-            var psi = new System.Diagnostics.ProcessStartInfo
+            try
             {
-                FileName = "dotnet",
-                // .NET 10 `dotnet test --list-tests` emits PLAIN CONSOLE TEXT —
-                // there is no JSON output mode for --list-tests (the --report-*
-                // and --logger flags error out when combined with it). We
-                // auto-detect JSON-vs-console in Parser.Parse.
-                Arguments = $"test \"{projectPath}\" --list-tests",
-                WorkingDirectory = Environment.CurrentDirectory,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-            };
+                var psi = new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = "dotnet",
+                    // .NET 10 `dotnet test --list-tests` emits PLAIN CONSOLE TEXT —
+                    // there is no JSON output mode for --list-tests (the --report-*
+                    // and --logger flags error out when combined with it). We
+                    // auto-detect JSON-vs-console in Parser.Parse.
+                    Arguments = $"test \"{projectPath}\" --list-tests",
+                    WorkingDirectory = repoRoot,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                };
 
-            using var proc = System.Diagnostics.Process.Start(psi);
-            if (proc == null)
-            {
-                Console.Error.WriteLine("Failed to start dotnet process");
-                return 7;
+                using var proc = System.Diagnostics.Process.Start(psi);
+                if (proc == null)
+                {
+                    Console.Error.WriteLine("Failed to start dotnet process");
+                    return [];
+                }
+
+                var stdout = proc.StandardOutput.ReadToEnd();
+                var stderr = proc.StandardError.ReadToEnd();
+                proc.WaitForExit(60000);
+
+                if (proc.ExitCode != 0)
+                {
+                    Console.Error.WriteLine($"dotnet test --list-tests failed (exit {proc.ExitCode})");
+                    Console.Error.WriteLine(stderr);
+                }
+
+                return titi.TestDiscovery.Parser.Parse(stdout, TestTier.Unit);
             }
-
-            var stdout = proc.StandardOutput.ReadToEnd();
-            var stderr = proc.StandardError.ReadToEnd();
-            proc.WaitForExit(60000);
-
-            if (proc.ExitCode != 0)
+            catch (Exception ex)
             {
-                Console.Error.WriteLine($"dotnet test --list-tests failed (exit {proc.ExitCode})");
-                Console.Error.WriteLine(stderr);
+                Console.Error.WriteLine($"Error listing tests: {ex.Message}");
+                return [];
             }
+        });
 
-            var items = titi.TestDiscovery.Parser.Parse(stdout, TestTier.Unit);
-            Console.WriteLine(Formatter.FormatTestItems(items));
-            return 0;
-        }
-        catch (Exception ex)
-        {
-            Console.Error.WriteLine($"Error listing tests: {ex.Message}");
-            return 7;
-        }
+        Console.WriteLine(Formatter.FormatTestItems(items));
+        return 0;
     }
 
     static int TestsIngestCommand(string[] args)
