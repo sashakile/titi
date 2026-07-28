@@ -1,0 +1,8 @@
+<Project>
+  <PropertyGroup Label="titi Configuration">
+    <TitiPrefix>Orion.</TitiPrefix>
+    <TitiSourceRoot>$(MSBuildThisFileDirectory)</TitiSourceRoot>
+    <InTitiContext Condition="'$(InTitiContext)' == ''">false</InTitiContext>
+    <AccelerateBuildsInVisualStudio>true</AccelerateBuildsInVisualStudio>
+  </PropertyGroup>
+</Project>

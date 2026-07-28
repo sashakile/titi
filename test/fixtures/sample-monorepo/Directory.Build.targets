@@ -1,0 +1,12 @@
+<Project>
+  <ItemGroup Condition="'$(InTitiContext)' == 'true'">
+    <_TitiSwappable
+      Include="@(PackageReference)"
+      Condition="$([System.String]::new('%(Identity)').StartsWith('$(TitiPrefix)'))
+        And Exists('$(TitiSourceRoot)%(Identity)\%(Identity).csproj')" />
+    <PackageReference Update="@(_TitiSwappable)"
+      ExcludeAssets="All" />
+    <ProjectReference
+      Include="$(TitiSourceRoot)%(_TitiSwappable.Identity)\%(_TitiSwappable.Identity).csproj" />
+  </ItemGroup>
+</Project>
