@@ -201,7 +201,7 @@ public static class ReplEngine
 
             if (graph.Nodes.TryGetValue(currentPath, out var currentNode))
             {
-                // Follow dependencies (forward direction)
+                // Follow dependency edges only (from -> each subsequent node is depended on by the previous one)
                 foreach (var dep in currentNode.Dependencies)
                 {
                     if (!visited.Contains(dep.To) && graph.Nodes.ContainsKey(dep.To))
@@ -210,18 +210,6 @@ public static class ReplEngine
                         var depProj = graph.Nodes[dep.To].Project;
                         var newRoute = new List<string>(route) { depProj.PackageId };
                         queue.Enqueue((dep.To, newRoute));
-                    }
-                }
-
-                // Also follow dependents (reverse direction)
-                foreach (var dep in currentNode.Dependents)
-                {
-                    if (!visited.Contains(dep.From) && graph.Nodes.ContainsKey(dep.From))
-                    {
-                        visited.Add(dep.From);
-                        var depProj = graph.Nodes[dep.From].Project;
-                        var newRoute = new List<string>(route) { depProj.PackageId };
-                        queue.Enqueue((dep.From, newRoute));
                     }
                 }
             }

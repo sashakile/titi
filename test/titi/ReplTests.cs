@@ -249,6 +249,55 @@ public class ReplTests
         Assert.Contains("Orion.Core.Data", outText);
     }
 
+    /// <summary>Path command with same from/to prints just the project name.</summary>
+    [Fact]
+    public void Repl_PathCommand_SameProject_PrintsName()
+    {
+        var input = new StringReader("path Orion.Core.Data Orion.Core.Data\nquit\n");
+        var output = new StringWriter();
+        var error = new StringWriter();
+
+        var exitCode = ReplEngine.Run(MakeTestGraph(), input, output, error);
+
+        Assert.Equal(0, exitCode);
+        var outText = output.ToString();
+        Assert.Contains("Orion.Core.Data", outText);
+        // Should not contain an arrow (means it's not showing a path)
+        Assert.DoesNotContain("->", outText);
+    }
+
+    /// <summary>Path command with no path available prints no-path message.</summary>
+    [Fact]
+    public void Repl_PathCommand_NoPath_ShowsError()
+    {
+        // Both Orion.Core.Data and Orion.App exist but there's no dependency path
+        // from Core.Data to App (Core.Data has no deps, App depends on Core.Data)
+        var input = new StringReader("path Orion.Core.Data Orion.App\nquit\n");
+        var output = new StringWriter();
+        var error = new StringWriter();
+
+        var exitCode = ReplEngine.Run(MakeTestGraph(), input, output, error);
+
+        Assert.Equal(0, exitCode);
+        var outText = output.ToString();
+        Assert.Contains("No path found", outText);
+    }
+
+    /// <summary>Path command with unknown project prints error.</summary>
+    [Fact]
+    public void Repl_PathCommand_UnknownProject_ShowsError()
+    {
+        var input = new StringReader("path Orion.App Unknown.Pkg\nquit\n");
+        var output = new StringWriter();
+        var error = new StringWriter();
+
+        var exitCode = ReplEngine.Run(MakeTestGraph(), input, output, error);
+
+        Assert.Equal(0, exitCode);
+        var errText = error.ToString();
+        Assert.Contains("Unknown.Pkg", errText);
+    }
+
     /// <summary>Info command shows project details.</summary>
     [Fact]
     public void Repl_InfoCommand_ShowsProjectInfo()
@@ -263,6 +312,21 @@ public class ReplTests
         var outText = output.ToString();
         Assert.Contains("Orion.Core.Data", outText);
         Assert.Contains("1.0.0", outText);
+    }
+
+    /// <summary>Info command with unknown project prints error.</summary>
+    [Fact]
+    public void Repl_InfoCommand_UnknownProject_ShowsError()
+    {
+        var input = new StringReader("info Unknown.Pkg\nquit\n");
+        var output = new StringWriter();
+        var error = new StringWriter();
+
+        var exitCode = ReplEngine.Run(MakeTestGraph(), input, output, error);
+
+        Assert.Equal(0, exitCode);
+        var errText = error.ToString();
+        Assert.Contains("Unknown.Pkg", errText);
     }
 
     /// <summary>Affected command shows affected projects.</summary>
