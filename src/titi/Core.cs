@@ -7,7 +7,7 @@ using titi.Config;
 using titi.Graph;
 using titi.Swap;
 using titi.Solution;
-using Microsoft.Build.Graph;
+using titi.Affected;
 
 namespace titi.Core;
 
@@ -43,31 +43,28 @@ public static class Program
         };
     }
 
-    static int OpenCommand(string packageId, string[] flags)
+    static (MonorepoGraph? Graph, TitiConfig? Config, int ExitCode) BuildGraphForRepo()
     {
         var repoRoot = Environment.CurrentDirectory;
 
-        // Load config
         var (config, configErr) = ConfigLoader.Load(repoRoot);
         if (configErr != null)
         {
             PrintError(configErr);
-            return 9;
+            return (null, null, 9);
         }
 
         var prefix = config!.Prefix;
         var sourceRoot = Path.GetFullPath(Path.Combine(repoRoot, config.SourceRoot));
 
-        // Discover projects
         Console.Error.WriteLine($"Discovering projects under {sourceRoot}...");
         var projects = MsBuildSetup.DiscoverProjects(sourceRoot, prefix);
         if (projects.Length == 0)
         {
             Console.Error.WriteLine($"No projects found matching prefix '{prefix}' under {sourceRoot}");
-            return 1;
+            return (null, config, 1);
         }
 
-        // Build graph
         Console.Error.WriteLine($"Building dependency graph from {projects.Length} projects...");
         var msGraph = MsBuildSetup.BuildGraph(projects);
         var descriptors = new Dictionary<string, ProjectDescriptor>();
@@ -78,16 +75,24 @@ public static class Program
         }
 
         var graph = GraphBuilder.Build(msGraph, descriptors, repoRoot);
+        return (graph, config, 0);
+    }
+
+    static int OpenCommand(string packageId, string[] flags)
+    {
+        var (graph, config, exitCode) = BuildGraphForRepo();
+        if (graph == null || exitCode != 0)
+            return exitCode;
 
         // Compute swap
         Console.Error.WriteLine($"Computing swap for {packageId}...");
         var swapResult = SwapEngine.Compute(
             graph,
             [packageId],
-            config.VersionPolicy,
+            config!.VersionPolicy,
             includeTransitive: true,
-            prefix,
-            sourceRoot
+            config.Prefix,
+            Path.GetFullPath(Path.Combine(Environment.CurrentDirectory, config.SourceRoot))
         );
 
         // Generate solution
@@ -115,7 +120,45 @@ public static class Program
 
     static int AffectedCommand(string[] args)
     {
-        Console.Error.WriteLine("titi affected — not yet implemented in tracer bullet");
+        var (graph, config, exitCode) = BuildGraphForRepo();
+        if (graph == null || exitCode != 0)
+            return exitCode;
+
+        // Parse --base flag
+        var baseRef = "HEAD~1";
+        for (int i = 0; i < args.Length; i++)
+        {
+            if (args[i] == "--base" && i + 1 < args.Length)
+                baseRef = args[i + 1];
+        }
+
+        // Get changed files from git
+        Console.Error.WriteLine($"Running git diff {baseRef}..HEAD...");
+        var (changedFiles, gitErr) = Analyzer.GetChangedFiles(Environment.CurrentDirectory, baseRef);
+
+        if (gitErr != null)
+        {
+            Console.Error.WriteLine($"Warning: git diff failed: {gitErr}");
+            Console.Error.WriteLine("Fallback: all projects will be reported as affected");
+        }
+        else if (changedFiles is null || changedFiles.Length == 0)
+        {
+            Console.Error.WriteLine("No changes detected since last commit.");
+        }
+
+        // Build affected set
+        var affected = Analyzer.BuildAffectedSet(changedFiles, graph);
+
+        // Print result
+        var output = new Dictionary<string, object>
+        {
+            ["changedFiles"] = affected.ChangedFiles,
+            ["directlyAffected"] = affected.DirectlyAffected.Select(p => new { p.PackageId, p.Path }).ToArray(),
+            ["transitivelyAffected"] = affected.TransitivelyAffected.Select(p => new { p.PackageId, p.Path }).ToArray(),
+            ["totalAffected"] = affected.DirectlyAffected.Length + affected.TransitivelyAffected.Length,
+        };
+
+        Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(output, new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
         return 0;
     }
 
