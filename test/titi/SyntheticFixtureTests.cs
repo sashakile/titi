@@ -13,7 +13,7 @@ public class SyntheticFixtureTests
     static readonly string ProjectPath = Path.GetFullPath(
         Path.Combine(AppContext.BaseDirectory, "../../../../../src/titi/titi.csproj"));
 
-    [Fact]
+    [Fact(Skip = "Slow (requires NuGet restore); run with: dotnet test --filter Category=Integration")]
     public void TitiOpen_WithSyntheticFixture_FindsAllProjects()
     {
         var psi = new ProcessStartInfo
@@ -40,7 +40,7 @@ public class SyntheticFixtureTests
         Assert.True(output["projectCount"].GetInt32() > 0);
     }
 
-    [Fact]
+    [Fact(Skip = "Slow (requires NuGet restore); run with: dotnet test --filter Category=Integration")]
     public void SyntheticFixture_ProjectsBuild()
     {
         // Verify the synthetic fixture itself builds

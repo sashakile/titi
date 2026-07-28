@@ -12,8 +12,12 @@ build:
 build-release:
     cd {{project}} && dotnet build src/titi/titi.csproj --configuration Release
 
-# Run unit + integration tests
+# Run unit + integration tests (excludes slow synthetic-fixture builds)
 test:
+    cd {{project}} && dotnet test test/titi/titi.Tests.csproj --filter "FullyQualifiedName!~Synthetic"
+
+# Run all tests including slow synthetic-fixture builds
+test-full:
     cd {{project}} && dotnet test test/titi/titi.Tests.csproj
 
 # Run tests with coverage
