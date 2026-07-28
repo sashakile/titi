@@ -9,7 +9,7 @@
 - [ ] 1.8 Add `selectedTests` field to `AffectedSet`
 
 ## 2. Test discovery via VSTest
-- [ ] 2.1 Implement `dotnet test --list-tests` invocation for a given .csproj (on .NET 10, JSON output; detect and handle both JSON and console formats)
+- [x] 2.1 Implement `dotnet test --list-tests` invocation for a given .csproj (on .NET 10, **console text** output — no JSON mode exists for `--list-tests`; auto-detect JSON-vs-console in the parser)
 - [ ] 2.2 Parse VSTest `--list-tests` output into `TestItem` records (xUnit/NUnit/MSTest format detection)
 - [ ] 2.3 Handle parameterized tests: one TestItem per data row; zero-row MemberData produces zero items with project-level fallback; warn if >1000 cases per method
 - [ ] 2.4 Implement `discover_test_items(project-path)` — returns vector of TestItem for one project

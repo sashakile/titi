@@ -186,7 +186,11 @@ public static class Program
             var psi = new System.Diagnostics.ProcessStartInfo
             {
                 FileName = "dotnet",
-                Arguments = $"test \"{projectPath}\" --list-tests -f json",
+                // .NET 10 `dotnet test --list-tests` emits PLAIN CONSOLE TEXT —
+                // there is no JSON output mode for --list-tests (the --report-*
+                // and --logger flags error out when combined with it). We
+                // auto-detect JSON-vs-console in Parser.Parse.
+                Arguments = $"test \"{projectPath}\" --list-tests",
                 WorkingDirectory = Environment.CurrentDirectory,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
@@ -201,15 +205,16 @@ public static class Program
             }
 
             var stdout = proc.StandardOutput.ReadToEnd();
+            var stderr = proc.StandardError.ReadToEnd();
             proc.WaitForExit(60000);
 
             if (proc.ExitCode != 0)
             {
                 Console.Error.WriteLine($"dotnet test --list-tests failed (exit {proc.ExitCode})");
-                Console.Error.WriteLine("Note: on .NET 10, use 'dotnet test --list-tests -f json'");
+                Console.Error.WriteLine(stderr);
             }
 
-            var items = titi.TestDiscovery.Parser.ParseVsTestJson(stdout, TestTier.Unit);
+            var items = titi.TestDiscovery.Parser.Parse(stdout, TestTier.Unit);
             Console.WriteLine(Formatter.FormatTestItems(items));
             return 0;
         }

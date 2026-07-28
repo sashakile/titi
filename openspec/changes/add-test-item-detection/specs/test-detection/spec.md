@@ -4,15 +4,15 @@
 
 The system SHALL enumerate individual test items from .NET test projects by invoking `dotnet test --list-tests` on each test project's `.csproj`, parsing the output to extract test method identities.
 
-> **VSTest version:** On .NET 10 (titi's target SDK per `global.json`), `dotnet test --list-tests` produces structured JSON output by default. No additional logger arguments are required. If the output format differs (e.g., when running on .NET 9 for development), the system SHALL detect the JSON vs. console output format and parse accordingly.
+> **VSTest output format (verified against .NET 10 SDK 10.0.302):** `dotnet test --list-tests` produces **plain console text** by default — there is no JSON output mode for `--list-tests`. The `--report-json`, `--report-trx`, and `--logger` flags all error out (`MSB1001: Unknown switch`) when combined with `--list-tests`. The console output is: optional MSBuild preamble lines, a `"The following Tests are available:"` header, then one indented fully-qualified test name per line, with parameterized rows expanded as `Namespace.Class.Method(param: value)`. The system SHALL parse this console format. If structured JSON output ever becomes available for `--list-tests`, the system SHALL auto-detect JSON-vs-console (leading `{`) and parse accordingly.
 >
-> **Framework detection:** The parser SHALL detect the test framework from output markers — xUnit (`[Fact]`, `[Theory]`), NUnit (`[Test]`, `[TestCase]`), and MSTest (`[TestMethod]`). Unrecognised frameworks SHALL be classified as `:unknown` and still enumerated.
+> **Framework detection:** The console `--list-tests` output does NOT expose the test framework's executor URI, so the framework CANNOT be reliably detected from `--list-tests` output alone. Discovered items SHALL default to `:xunit` (titi's primary target framework) when parsing console output. (Framework may be refined later from TRX run results, which DO include the executor URI.) Unrecognised frameworks from JSON/TRX sources SHALL be classified as `:unknown` and still enumerated.
 >
-> **Parameterized tests:** xUnit `[Theory]`, NUnit `[TestCase]`, and MSTest `[DataTestMethod]` each produce multiple test items (one per data row). The system SHALL enumerate each data row as a separate `TestItem` with the serialized arguments in the `methodName`. If a parameterized test source (e.g., `[MemberData]`) returns zero rows, the method SHALL produce zero `TestItem` entries but remain eligible for project-level selection. The system SHALL emit a warn-level diagnostic if a single method produces more than 1000 test cases.
+> **Parameterized tests:** xUnit `[Theory]`, NUnit `[TestCase]`, and MSTest `[DataTestMethod]` each produce multiple test items (one per data row). The system SHALL enumerate each data row as a separate `TestItem`, preserving the serialized arguments in the `TestId` (e.g. `Namespace.Class.Method(input: "a")`) while splitting `ClassName` and `MethodName` from the unparameterized head. If a parameterized test source (e.g., `[MemberData]`) returns zero rows, the method SHALL produce zero `TestItem` entries but remain eligible for project-level selection. The system SHALL emit a warn-level diagnostic if a single method produces more than 1000 test cases.
 
 #### Scenario: Successful enumeration on .NET 10
 - **WHEN** `dotnet test --list-tests` enumerates `Orion.Core.Tests` against an xUnit test project with 5 `[Fact]` methods
-- **THEN** 5 `TestItem` records are returned, each with framework `:xunit`, and the output is parsed from VSTest's default JSON format
+- **THEN** 5 `TestItem` records are returned, each with framework `:xunit`, parsed from the default console text output (JSON output is not available for `--list-tests` on .NET 10)
 
 #### Scenario: No tests in project
 - **WHEN** `dotnet test --list-tests` returns no test methods for a given project
