@@ -11,6 +11,7 @@ using titi.Affected;
 using titi.TestCli;
 using titi.Safety;
 using titi.TestManifest;
+using titi.Adapter;
 
 namespace titi.Core;
 
@@ -43,6 +44,7 @@ public static class Program
             ["tests", "list", ..] => TestsListCommand(args[2..]),
             ["tests", "ingest", ..] => TestsIngestCommand(args[2..]),
             ["tests", "record", ..] => TestsRecordCommand(),
+            ["testaruda-adapter", ..] => TestarudaAdapterCommand(),
             ["test-manifest", ..] => TestManifestCommand(args[1..]),
             ["clean"] => CleanCommand(),
             ["--help"] or ["-h"] or [] => PrintHelp(),
@@ -924,6 +926,18 @@ public static class Program
         };
     }
 
+    static int TestarudaAdapterCommand()
+    {
+        var (graph, config, exitCode) = BuildGraphForRepo();
+        if (graph == null || exitCode != 0)
+            return exitCode;
+
+        Console.Error.WriteLine("Starting testaruda adapter (project-level, Phase 1)...");
+        Console.Error.WriteLine("Reading commands from stdin, writing responses to stdout...");
+
+        return TestarudaAdapter.RunLoop(graph, Console.In, Console.Out);
+    }
+
     static int CleanCommand()
     {
         var titiDir = ".titi";
@@ -951,6 +965,7 @@ public static class Program
         Console.WriteLine("  titi tests record         Run all tests and record results");
         Console.WriteLine("  titi test-manifest [--tier <tier>]   Generate Traversal .proj for affected tests");
         Console.WriteLine("  titi test-manifest --select [--list]  Generate per-test filtered Traversal");
+        Console.WriteLine("  titi testaruda-adapter   Start testaruda adapter (JSON-over-stdio protocol)");
         Console.WriteLine("  titi clean               Remove all titi-generated artifacts");
         Console.WriteLine("  titi --help               Show this help");
         return 0;
