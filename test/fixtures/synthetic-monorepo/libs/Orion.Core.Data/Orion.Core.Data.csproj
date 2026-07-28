@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <PackageId>Orion.Core.Data</PackageId>
+    <Version>1.0.0</Version>
+    <IsPackable>true</IsPackable>
+  </PropertyGroup>
+</Project>
