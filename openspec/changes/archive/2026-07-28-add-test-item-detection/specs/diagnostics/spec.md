@@ -1,6 +1,6 @@
 ## MODIFIED Requirements
 
-### Requirement: Error Code Taxonomy (DX-02)
+### Requirement DX-02: Error Code Taxonomy
 
 The system SHALL define and document the following error codes with their severity classification. **Fatal** errors abort the current command immediately; **aggregatable** errors are collected and reported together at the end of the current phase.
 

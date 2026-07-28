@@ -1,6 +1,6 @@
 ## MODIFIED Requirements
 
-### Requirement: Exit Codes (CLI-18)
+### Requirement CLI-18: Exit Codes
 
 The system SHALL use exit code 0 for success, 1 for all command failures (including validation, graph, or build errors), 2 for usage errors (invalid arguments or unknown subcommands), 10 for confidence-fallback full-suite selection (test selection confidence fell below the configured threshold and the system recommends running the full test suite), and 20 for safe-to-skip selection (no tests were selected and the always-run set is empty — it is safe to skip the test phase entirely). Exit codes 10 and 20 SHALL only be emitted by test-selection commands (`titi test-manifest --select`, `titi affected` when test edges are available) and SHALL NOT be emitted by non-test commands.
 
@@ -28,7 +28,7 @@ The system SHALL use exit code 0 for success, 1 for all command failures (includ
 - **WHEN** `titi test-manifest --select` is invoked
 - **THEN** the process exits with code 20 and no Traversal .proj is written
 
-### Requirement: titi test-manifest (CLI-06)
+### Requirement CLI-06: titi test-manifest
 
 The system SHALL implement `titi test-manifest` which generates a Traversal .proj scoped to affected test projects (see `dependency-graph` spec, DG-04/DG-06), organised by tier. When `--select` is provided and test-to-source edges are available, the system SHALL emit a per-test-filtered Traversal by injecting `dotnet test --filter` arguments scoped to the selected test items. When `--select` is provided but no test-to-source edges are available, the system SHALL emit a warn-level diagnostic and fall back to project-level Traversal without filtering. When `--list` is provided, the system SHALL print selected test IDs to stdout one per line instead of emitting a Traversal file.
 

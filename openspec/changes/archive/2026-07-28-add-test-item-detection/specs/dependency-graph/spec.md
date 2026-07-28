@@ -1,6 +1,6 @@
 ## MODIFIED Requirements
 
-### Requirement: AffectedSet and TieredTestSet Schemas (DG-06)
+### Requirement DG-06: AffectedSet and TieredTestSet Schemas
 
 The system SHALL define the `AffectedSet` schema with fields: `changedFiles` (string[]), `directlyAffected` (ProjectDescriptor[]), `transitivelyAffected` (ProjectDescriptor[]), `affectedTests` (TieredTestSet), and `selectedTests` (TestSelectionResult[]). The system SHALL define the `TieredTestSet` schema with fields: `unit` (ProjectDescriptor[]), `package` (ProjectDescriptor[]), `integration` (ProjectDescriptor[]), `compatibility` (ProjectDescriptor[]), and `items` (map of tier → TestItem[]).
 
