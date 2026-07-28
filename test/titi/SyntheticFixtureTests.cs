@@ -116,5 +116,14 @@ public class SyntheticFixtureTests
 
         var fingerprintPath = Path.Combine(titiDir, "test-cache", "fingerprint");
         Assert.True(File.Exists(fingerprintPath), "fingerprint not written for incremental skip");
+
+        // The fixture's tests exercise library code (Orion.Core.Data.Parser/Foo,
+        // Orion.Auth.AuthService, Orion.Storage.Repository), so the recorded
+        // edge index MUST be non-empty (validates the full TD-03 pipeline:
+        // graph -> test run with coverage -> TRX+Cobertura -> EdgeBuilder).
+        var edgesJson = File.ReadAllText(edgesPath);
+        var edges = System.Text.Json.JsonSerializer.Deserialize<List<JsonElement>>(edgesJson
+            .StartsWith('[') ? edgesJson : "[]") ?? new();
+        Assert.True(edges.Count > 0, $"expected non-empty edge index, got {edges.Count}");
     }
 }

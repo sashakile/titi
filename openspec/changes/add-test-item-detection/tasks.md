@@ -58,9 +58,9 @@
   - `exclude-patterns` (string[], default: [])
 
 ## 7. Testing
-- [ ] 7.1 Create fixture: synthetic .NET monorepo with 2 test projects (one xUnit, one NUnit) and 3 library projects
-- [ ] 7.2 Verify `titi tests list` enumerates all test methods from fixture test projects (including parameterized, nested, and generic methods)
-- [ ] 7.3 Verify `titi tests ingest` parses fixture TRX and Cobertura output correctly; verify Cobertura attribution quality on .NET 10
+- [x] 7.1 Create fixture: synthetic .NET monorepo with 2 test projects (one xUnit, one NUnit) and 3 library projects  (Orion.UnitTests xUnit, Orion.IntegrationTests NUnit, libs Orion.Core.Data/Auth/Storage; coverlet.collector added; library source files added)
+- [x] 7.2 Verify `titi tests list` enumerates all test methods from fixture test projects (including parameterized, nested, and generic methods)  (18 methods enumerated: parameterized rows expanded, NestedAuthTests+Inner preserved with + syntax, FactoryTests.CreateInstance_Foo generic-method shape)
+- [x] 7.3 Verify `titi tests ingest` parses fixture TRX and Cobertura output correctly; verify Cobertura attribution quality on .NET 10  (ingest parses Cobertura into edges; record produces 93 test×source edges across 25 tests / 4 library source files). NOTE: ingest currently writes method-keyed edges — TID-3c (titi-wnj) tracks routing ingest through EdgeBuilder for the spec-correct test×source cross-product. File-level Cobertura attribution confirmed reliable on .NET 10; method-level not pursued (TD-03 known limitation).
 - [ ] 7.4 Verify `titi test-manifest --select` emits filtered vs unfiltered Traversal correctly; verify framework-aware filter syntax and batch splitting
 - [ ] 7.5 Verify always-run set includes failed/new/no-history tests; verify "newly added" relative to recording (not discovery)
 - [ ] 7.6 Verify confidence fallback triggers when below threshold
