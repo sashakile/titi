@@ -12,6 +12,7 @@ using titi.TestCli;
 using titi.Safety;
 using titi.TestManifest;
 using titi.Adapter;
+using titi.Repl;
 
 namespace titi.Core;
 
@@ -46,6 +47,7 @@ public static class Program
             ["tests", "record", ..] => TestsRecordCommand(),
             ["testaruda-adapter", ..] => TestarudaAdapterCommand(),
             ["test-manifest", ..] => TestManifestCommand(args[1..]),
+            ["repl"] => ReplCommand(),
             ["clean"] => CleanCommand(),
             ["--help"] or ["-h"] or [] => PrintHelp(),
             _ => UnknownCommand(args[0])
@@ -953,6 +955,13 @@ public static class Program
         return 0;
     }
 
+    static int ReplCommand()
+    {
+        var (graph, _, exitCode) = BuildGraphForRepo();
+        if (graph == null) return exitCode;
+        return ReplEngine.Run(graph, Console.In, Console.Out, Console.Error);
+    }
+
     static int PrintHelp()
     {
         Console.WriteLine("titi — .NET Monorepo Orchestration CLI");
@@ -966,6 +975,7 @@ public static class Program
         Console.WriteLine("  titi test-manifest [--tier <tier>]   Generate Traversal .proj for affected tests");
         Console.WriteLine("  titi test-manifest --select [--list]  Generate per-test filtered Traversal");
         Console.WriteLine("  titi testaruda-adapter   Start testaruda adapter (JSON-over-stdio protocol)");
+        Console.WriteLine("  titi repl                Interactive dependency graph REPL");
         Console.WriteLine("  titi clean               Remove all titi-generated artifacts");
         Console.WriteLine("  titi --help               Show this help");
         return 0;
