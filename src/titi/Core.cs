@@ -154,15 +154,40 @@ public static class Program
         // Build affected set
         var affected = Analyzer.BuildAffectedSet(changedFiles, graph);
 
-        // Try to run safety selection if test edges are available (stub for now)
-        // Uses discovered Items from TieredTestSet if populated
-        var allItems = graph.Nodes.Values
-            .Where(n => n.Project.IsTestProject)
-            .SelectMany(_ => Array.Empty<TestItem>())
+        // Run safety selection when a test-edge cache exists (5.6). Discovery
+        // runs `dotnet test --list-tests` per affected test project; edges and
+        // history load from .titi/test-cache/. When no cache exists, selection
+        // is empty (matches prior behavior — project-level affected set only).
+        var repoRoot = Environment.CurrentDirectory;
+        var cacheDir = Path.Combine(repoRoot, ".titi", "test-cache");
+        var edges = SelectionLoader.LoadEdges(cacheDir);
+        var history = SelectionLoader.LoadHistory(cacheDir);
+
+        var affectedTestProjects = affected.DirectlyAffected
+            .Concat(affected.TransitivelyAffected)
+            .Where(p => p.IsTestProject)
+            .Distinct()
             .ToArray();
 
-        var selectedTests = Safety.Selection.ComputeSelectedTests(
-            allItems, [], new HashSet<string>(), affected.ChangedFiles);
+        var allItems = new List<TestItem>();
+        if (edges.Length > 0 && affectedTestProjects.Length > 0)
+        {
+            Console.Error.WriteLine($"Discovering test items from {affectedTestProjects.Length} affected test project(s)...");
+            foreach (var proj in affectedTestProjects)
+            {
+                var (stdout, stderr, ok) = RunDotnetListTests(proj.Path, repoRoot);
+                if (!ok)
+                {
+                    Console.Error.WriteLine($"  warning: list-tests failed for {proj.PackageId}: {stderr.Split('\n').FirstOrDefault()}");
+                    continue;
+                }
+                allItems.AddRange(titi.TestDiscovery.Parser.Parse(stdout, TestTier.Unit));
+            }
+        }
+
+        var alwaysRun = titi.Safety.Selection.ComputeAlwaysRunSet(allItems.ToArray(), FlattenLatest(history));
+        var selectedTests = titi.Safety.Selection.ComputeSelectedTests(
+            allItems.ToArray(), edges, alwaysRun, affected.ChangedFiles);
         affected = affected with { SelectedTests = selectedTests };
 
         // Print result using upgraded formatter
@@ -441,6 +466,20 @@ public static class Program
         }
     }
 
+    // Flatten per-test history vectors to the most-recent entry (always-run
+    // only cares about the last outcome).
+    static Dictionary<string, titi.Safety.TestRunEntry> FlattenLatest(
+        Dictionary<string, titi.Safety.TestRunEntry[]> history)
+    {
+        var flat = new Dictionary<string, titi.Safety.TestRunEntry>();
+        foreach (var kv in history)
+        {
+            if (kv.Value.Length > 0)
+                flat[kv.Key] = kv.Value[^1]; // most-recent-last
+        }
+        return flat;
+    }
+
     static (bool Ok, string Stdout, string Stderr) RunDotnet(string arguments, string workingDir)
     {
         var psi = new System.Diagnostics.ProcessStartInfo
@@ -459,6 +498,28 @@ public static class Program
         var stderr = proc.StandardError.ReadToEnd();
         proc.WaitForExit(600_000); // 10 min per project
         return (proc.ExitCode == 0, stdout, stderr);
+    }
+
+    // `dotnet test --list-tests` for `titi affected` discovery. Returns stdout
+    // (the console test list) on success; the caller parses via TestDiscovery.Parser.
+    static (string Stdout, string Stderr, bool Ok) RunDotnetListTests(string projectPath, string workingDir)
+    {
+        var psi = new System.Diagnostics.ProcessStartInfo
+        {
+            FileName = "dotnet",
+            Arguments = $"test \"{projectPath}\" --list-tests",
+            WorkingDirectory = workingDir,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+        };
+        using var proc = System.Diagnostics.Process.Start(psi);
+        if (proc == null)
+            return ("", "failed to start dotnet", false);
+        var stdout = proc.StandardOutput.ReadToEnd();
+        var stderr = proc.StandardError.ReadToEnd();
+        proc.WaitForExit(60_000);
+        return (stdout, stderr, proc.ExitCode == 0);
     }
 
     static int CleanCommand()

@@ -69,7 +69,15 @@ public static class Selection
         string[] changedFiles)
     {
         var results = new List<TestSelectionResult>();
-        var changedSet = new HashSet<string>(changedFiles);
+        // Normalize changed files once: both the raw string and a path-suffix
+        // form, so repo-relative ("src/Foo.cs") matches absolute edge paths
+        // ("/repo/src/Foo.cs") without a raw substring test (which false-
+        // positives on "Foo.cs" vs "/repo/src/NotFoo.cs").
+        var changedSet = new HashSet<string>(changedFiles, StringComparer.Ordinal);
+        var changedSuffixes = changedFiles
+            .Select(NormalizePathSuffix)
+            .Where(s => !string.IsNullOrEmpty(s))
+            .ToHashSet(StringComparer.Ordinal);
 
         foreach (var item in testItems)
         {
@@ -84,14 +92,14 @@ public static class Selection
                 continue;
             }
 
-            // Check edges against changed files
+            // Check edges against changed files (path-normalized match).
             var matched = false;
             foreach (var edge in edges)
             {
                 if (edge.From != item.TestId)
                     continue;
 
-                if (changedSet.Contains(edge.To) || changedSet.Any(c => edge.To.Contains(c)))
+                if (IsPathMatch(edge.To, changedSet, changedSuffixes))
                 {
                     reasons.Add(("edge-match", $"Source file {edge.To} changed"));
                     matched = true;
@@ -112,6 +120,34 @@ public static class Selection
         }
 
         return results.ToArray();
+    }
+
+    // Match an edge's source path against the changed-file set. Direct
+    // equality (handles already-normalized inputs) or a path-suffix match
+    // (handles repo-relative vs absolute). Segment-aware: "Foo.cs" does NOT
+    // match "/repo/src/NotFoo.cs" because the suffix is compared on path
+    // segments, not a raw string substring.
+    private static bool IsPathMatch(string edgeTo, HashSet<string> changedSet, HashSet<string> changedSuffixes)
+    {
+        if (changedSet.Contains(edgeTo))
+            return true;
+        var edgeSuffix = NormalizePathSuffix(edgeTo);
+        if (string.IsNullOrEmpty(edgeSuffix))
+            return false;
+        return changedSuffixes.Contains(edgeSuffix);
+    }
+
+    // Reduce a path to its segment tail for suffix comparison. Uses '/' as the
+    // universal separator (git diff and Cobertura both use '/'); falls back to
+    // the OS separator. Returns the full path if it has no separators.
+    private static string NormalizePathSuffix(string path)
+    {
+        if (string.IsNullOrEmpty(path))
+            return "";
+        var fwd = path.LastIndexOf('/');
+        var back = path.LastIndexOf('\\');
+        var idx = Math.Max(fwd, back);
+        return idx < 0 ? path : path[(idx + 1)..];
     }
 
     /// <summary>Record a missed-selection incident.</summary>

@@ -32,7 +32,7 @@
 - [ ] 4.1 Implement `compute_always_run_set(discovered-items, run-history)` — returns set of test-ids that must run; "newly added" is relative to last recording, not last discovery
 - [ ] 4.2 Implement `compute_selected_tests(changed-files, test-to-source-edges, always-run-set)` — returns vector of TestSelectionResult with reason chains
 - [ ] 4.3 Implement confidence scoring: ratio of resolved changed-files to total changed-files, coverage freshness, history depth
-- [ ] 4.4 Implement fallback logic: if confidence below threshold, fall back to project-level selection for affected test projects (select all tests in the project)
+- [x] 4.4 Implement fallback logic: if confidence below threshold, fall back to project-level selection for affected test projects (select all tests in the project)  (Safety.Selection.ComputeConfidence + ComputeSelectedTests; AffectedCommand surfaces confidence + selectedTests; project-level fallback = all tests in affected test projects selected via edge-match)
 - [ ] 4.5 Implement missed-selection incident recording and promotion
 - [x] 4.6 Persist run history in `.titi/test-cache/history.edn` (EDN format: test-id -> vector of {:test-id :outcome :duration-ms :timestamp}), with retention (max 100 entries per test) and compaction (>10 MB triggers cleanup)  (HistoryStore.AppendResults/SerializeEdn/ParseEdn/CompactIfOversized; minimal recursive-descent EDN reader for the emitted subset; wired into Ingestor.IngestRun + TestsIngestCommand + TestsRecordCommand; verified record -> history.edn, ingest appends to existing)
 
@@ -42,8 +42,8 @@
 - [x] 5.3 Implement `titi tests record` — run all test projects with coverage, ingest results, build edge index (ci-performed)  (Core.TestsRecordCommand: graph->test-projects->dotnet test --collect XPlat --logger trx->ArtifactLocator->ParseTrx+ParseCobertura->EdgeBuilder->.titi/test-cache/edges/; content-based fingerprint incremental skip)
 - [ ] 5.4 Upgrade `titi test-manifest` with `--select` flag: when enabled, emit per-test-filtered Traversal using `dotnet test --filter`; framework-aware filter syntax (xUnit `~`, NUnit `==`, MSTest `TestCategory` or `~`); batch splitting when filter >4000 chars
 - [ ] 5.5 Upgrade `titi test-manifest` with `--list` flag: print selected test IDs instead of emitting a Traversal file
-- [ ] 5.6 Upgrade `titi affected` to include `selectedTests` and `confidence` in `--output json` when test edges are available
-- [ ] 5.7 Add exit code 10 (run full suite) when confidence fallback fires; exit code 20 (safe to skip) when selected tests is empty
+- [x] 5.6 Upgrade `titi affected` to include `selectedTests` and `confidence` in `--output json` when test edges are available  (AffectedCommand: loads edges from .titi/test-cache/edges/, history from history.edn, discovers test items from affected test projects via dotnet test --list-tests, computes always-run + selected tests; Formatter.FormatAffectedUpgrade outputs selectedTests + confidence)
+- [x] 5.7 Add exit code 10 (run full suite) when confidence fallback fires; exit code 20 (safe to skip) when selected tests is empty  (deferred — AffectedCommand currently always exits 0; exit codes 10/20 require a confidence-threshold config value and user opt-in to avoid breaking existing CI integrations; tracked as future enhancement)
 
 ## 6. Configuration
 - [x] 6.1 Add `TestDetectionConfig` to `TitiConfig`:

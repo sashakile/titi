@@ -168,6 +168,48 @@ public class SafetyTests
         Assert.Contains(results, r => r.TestId == "test-C" && !r.Selected);
     }
 
+    [Fact]
+    public void ComputeSelectedTests_EdgeMatch_NormalizesAbsoluteVsRelativePaths()
+    {
+        // git diff returns repo-relative paths ("src/Foo.cs"); Cobertura edges
+        // carry sourceRoot-relative or absolute paths. Matching must normalize.
+        var testItems = new[]
+        {
+            new TestItem("test-A", "/asm.dll", "C", "A", TestFramework.Xunit, TestTier.Unit,
+                null, TestOutcome.Passed, 0, []),
+        };
+        var edges = new[]
+        {
+            new TestToSourceEdge("test-A", "/repo/src/Foo.cs", EdgeOrigin.Static, 1_000_000, []),
+        };
+
+        var results = titi.Safety.Selection.ComputeSelectedTests(testItems, edges, [], ["src/Foo.cs"]);
+
+        Assert.Contains(results, r => r.TestId == "test-A" && r.Selected);
+    }
+
+    [Fact]
+    public void ComputeSelectedTests_EdgeMatch_NoFalsePositiveOnSubstring()
+    {
+        // Bug being fixed: edge.To.Contains(changedFile) matched "Foo.cs"
+        // against "/repo/src/NotFoo.cs" (false positive). Path matching must
+        // be segment-aware, not a raw substring test.
+        var testItems = new[]
+        {
+            new TestItem("test-A", "/asm.dll", "C", "A", TestFramework.Xunit, TestTier.Unit,
+                null, TestOutcome.Passed, 0, []),
+        };
+        var edges = new[]
+        {
+            new TestToSourceEdge("test-A", "/repo/src/NotFoo.cs", EdgeOrigin.Static, 1_000_000, []),
+        };
+
+        var results = titi.Safety.Selection.ComputeSelectedTests(testItems, edges, [], ["Foo.cs"]);
+
+        var a = Assert.Single(results);
+        Assert.False(a.Selected, $"expected no match, but {a.TestId} was selected via substring false-positive");
+    }
+
     // ── Missed-selection incident ────────────────────────────────
 
     [Fact]
