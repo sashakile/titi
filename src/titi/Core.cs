@@ -353,18 +353,7 @@ public static class Program
         var cacheDir = Path.Combine(titiDir, "test-cache");
         var edgesDir = Path.Combine(cacheDir, "edges");
         var runsRoot = Path.Combine(cacheDir, "runs");
-        var fingerprintPath = Path.Combine(cacheDir, "fingerprint");
-
-        // Incremental recording (CLI-22): if the edge cache is fresh relative to
-        // the current source-file fingerprint, skip re-running tests and exit 0.
-        var currentFingerprint = ComputeSourceFingerprint(graph);
-        if (Directory.Exists(edgesDir)
-            && File.Exists(fingerprintPath)
-            && File.ReadAllText(fingerprintPath) == currentFingerprint)
-        {
-            Console.Error.WriteLine("Edge cache is fresh — no tests re-run.");
-            return 0;
-        }
+        var projectsDir = Path.Combine(edgesDir, "projects");
 
         var testProjects = graph.Nodes.Values
             .Where(n => n.Project.IsTestProject)
@@ -377,68 +366,138 @@ public static class Program
             return 0;
         }
 
-        Console.Error.WriteLine($"Recording {testProjects.Length} test project(s) with coverage...");
-        Directory.CreateDirectory(runsRoot);
-        Directory.CreateDirectory(edgesDir);
-
-        // Load prior run history so this recording appends to it (TD-06).
+        // Load prior per-project fingerprints and run history (TID-11).
+        var priorFingerprints = RecordPlanner.LoadProjectFingerprints(cacheDir);
         var historyPath = Path.Combine(cacheDir, "history.edn");
         var history = File.Exists(historyPath)
             ? HistoryStore.ParseEdn(File.ReadAllText(historyPath))
             : new Dictionary<string, Safety.TestRunEntry[]>();
 
+        // Determine which projects changed (per-project fingerprint diff).
+        var changedProjects = RecordPlanner.ComputeChangedProjects(priorFingerprints, testProjects);
+        var unchangedPackageIds = testProjects
+            .Select(p => p.PackageId)
+            .Except(changedProjects.Select(c => c.PackageId))
+            .ToHashSet();
+
+        Console.Error.WriteLine($"Recording {testProjects.Length} test project(s) with coverage...");
+        Console.Error.WriteLine($"  {changedProjects.Length} changed, {unchangedPackageIds.Count} unchanged");
+        Directory.CreateDirectory(runsRoot);
+        Directory.CreateDirectory(projectsDir);
+
         var allEdges = new List<TestToSourceEdge>();
         var failures = 0;
-        foreach (var plan in RecordPlanner.PlanTestRuns(testProjects, runsRoot))
+
+        // Only re-run changed projects (TID-11 incremental).
+        if (changedProjects.Length > 0)
         {
-            Directory.CreateDirectory(plan.ResultsDir);
-            try
+            Console.Error.WriteLine($"Re-recording {changedProjects.Length} changed project(s)...");
+            foreach (var plan in RecordPlanner.PlanTestRuns(changedProjects, runsRoot))
             {
-                Console.Error.WriteLine($"  dotnet {plan.Arguments}");
-                var (ranOk, stdout, stderr) = RunDotnet(plan.Arguments, repoRoot);
-                if (!ranOk)
+                Directory.CreateDirectory(plan.ResultsDir);
+                try
                 {
-                    failures++;
-                    Console.Error.WriteLine($"  test run failed for {plan.ProjectPath}: {stderr.Split('\n').FirstOrDefault()}");
-                    continue;
-                }
+                    Console.Error.WriteLine($"  dotnet {plan.Arguments}");
+                    var (ranOk, stdout, stderr) = RunDotnet(plan.Arguments, repoRoot);
+                    if (!ranOk)
+                    {
+                        failures++;
+                        Console.Error.WriteLine($"  test run failed for {plan.ProjectPath}: {stderr.Split('\n').FirstOrDefault()}");
+                        continue;
+                    }
 
-                var (trxPath, coberturaPath) = ArtifactLocator.FindArtifacts(plan.ResultsDir);
-                if (trxPath == null)
+                    var (trxPath, coberturaPath) = ArtifactLocator.FindArtifacts(plan.ResultsDir);
+                    if (trxPath == null)
+                    {
+                        failures++;
+                        Console.Error.WriteLine($"  no TRX produced for {plan.ProjectPath}");
+                        continue;
+                    }
+
+                    var trxResults = titi.Coverage.Parser.ParseTrx(File.ReadAllText(trxPath));
+                    history = HistoryStore.AppendResults(history, trxResults, DateTime.UtcNow);
+                    string[] coveredSources = [];
+                    if (coberturaPath != null)
+                    {
+                        var coberturaEdges = titi.Coverage.Parser.ParseCobertura(
+                            File.ReadAllText(coberturaPath), repoRoot);
+                        coveredSources = coberturaEdges.Select(e => e.To).Distinct().ToArray();
+                    }
+
+                    var projectEdges = EdgeBuilder.BuildFromRun(trxResults, coveredSources);
+                    allEdges.AddRange(projectEdges);
+
+                    // Write per-project edge file for future incremental runs.
+                    var projEdgePath = Path.Combine(projectsDir, $"{SanitizeForPath(plan.ProjectPath)}.edn");
+                    File.WriteAllText(projEdgePath,
+                        System.Text.Json.JsonSerializer.Serialize(
+                            projectEdges.Select(e => new { e.From, e.To, e.Origin, e.Weight, e.LineRanges }),
+                            new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
+                }
+                finally
                 {
-                    failures++;
-                    Console.Error.WriteLine($"  no TRX produced for {plan.ProjectPath}");
-                    continue;
+                    try { Directory.Delete(plan.ResultsDir, recursive: true); } catch { }
                 }
-
-                var trxResults = titi.Coverage.Parser.ParseTrx(File.ReadAllText(trxPath));
-                // Update run history (TD-06): append this project's results.
-                history = HistoryStore.AppendResults(history, trxResults, DateTime.UtcNow);
-                string[] coveredSources = [];
-                if (coberturaPath != null)
-                {
-                    var coberturaEdges = titi.Coverage.Parser.ParseCobertura(
-                        File.ReadAllText(coberturaPath), repoRoot);
-                    coveredSources = coberturaEdges.Select(e => e.To).Distinct().ToArray();
-                }
-
-                allEdges.AddRange(EdgeBuilder.BuildFromRun(trxResults, coveredSources));
-            }
-            finally
-            {
-                // Clean up the transient results dir whether the run succeeded,
-                // failed, or produced no artifacts — never leak run state.
-                try { Directory.Delete(plan.ResultsDir, recursive: true); } catch { }
             }
         }
 
-        // Persist the edge index (TD-03: .titi/test-cache/edges/).
+        // Load edges from unchanged projects (from prior per-project files).
+        if (unchangedPackageIds.Count > 0)
+        {
+            Console.Error.WriteLine($"Preserving edges for {unchangedPackageIds.Count} unchanged project(s)...");
+            foreach (var packageId in unchangedPackageIds)
+            {
+                var projEdgePath = Path.Combine(projectsDir, $"{SanitizeForPath(packageId)}.edn");
+                if (File.Exists(projEdgePath))
+                {
+                    try
+                    {
+                        var json = File.ReadAllText(projEdgePath);
+                        var edges = System.Text.Json.JsonSerializer.Deserialize<List<SelectionLoader.JsonEdge>>(json);
+                        if (edges != null)
+                        {
+                            allEdges.AddRange(edges.Select(e => new TestToSourceEdge(
+                                From: e.From ?? "", To: e.To ?? "",
+                                Origin: SelectionLoader.ParseOrigin(e.Origin),
+                                Weight: e.Weight,
+                                LineRanges: (e.LineRanges ?? []).Select(lr => (lr.Start, lr.End)).ToArray()
+                            )));
+                        }
+                    }
+                    catch { /* skip corrupt per-project file */ }
+                }
+            }
+        }
+
+        // Clean up per-project files for projects no longer in the graph.
+        var currentIds = testProjects.Select(p => SanitizeForPath(p.PackageId)).ToHashSet();
+        if (Directory.Exists(projectsDir))
+        {
+            foreach (var file in Directory.EnumerateFiles(projectsDir, "*.edn"))
+            {
+                var name = Path.GetFileNameWithoutExtension(file);
+                if (!currentIds.Contains(name))
+                {
+                    try { File.Delete(file); } catch { }
+                }
+            }
+        }
+
+        // Write combined edges.edn (the file that SelectionLoader.LoadEdges reads).
         var edgesPath = Path.Combine(edgesDir, "edges.edn");
         File.WriteAllText(edgesPath,
             System.Text.Json.JsonSerializer.Serialize(
                 allEdges.Select(e => new { e.From, e.To, e.Origin, e.Weight, e.LineRanges }),
                 new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
-        File.WriteAllText(fingerprintPath, currentFingerprint);
+
+        // Update per-project fingerprints (fresh values for all current projects).
+        var currentFingerprints = new Dictionary<string, string>();
+        foreach (var proj in testProjects)
+        {
+            var projDir = Path.GetDirectoryName(proj.Path) ?? "";
+            currentFingerprints[proj.PackageId] = titi.TestDiscovery.DiscoveryCache.ComputeFingerprint(projDir, proj.Path);
+        }
+        RecordPlanner.SaveProjectFingerprints(cacheDir, currentFingerprints);
 
         // Persist run history (TD-06): evict beyond 100/test, compact >10MB.
         var compactedHistory = HistoryStore.CompactIfOversized(history);
@@ -585,5 +644,12 @@ public static class Program
         Console.Error.WriteLine($"Error {(int)err.Code:D4}: {err.Message}");
         foreach (var suggestion in err.Suggestions)
             Console.Error.WriteLine($"  Suggested: {suggestion}");
+    }
+
+    /// <summary>Sanitize a project path or package id for use as a filename.</summary>
+    static string SanitizeForPath(string s)
+    {
+        var invalid = Path.GetInvalidFileNameChars();
+        return new string(s.Select(c => invalid.Contains(c) ? '_' : c).ToArray());
     }
 }

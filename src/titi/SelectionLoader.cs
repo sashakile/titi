@@ -50,9 +50,8 @@ public static class SelectionLoader
         return HistoryStore.ParseEdn(File.ReadAllText(historyPath));
     }
 
-    // The edges.edn JSON shape (written by Core.cs): an array of
-    // { From, To, Origin (int), Weight, LineRanges: [{Start, End}] }.
-    private sealed class JsonEdge
+    /// <summary>JSON shape for edges.edn serialization.</summary>
+    internal sealed class JsonEdge
     {
         public string? From { get; set; }
         public string? To { get; set; }
@@ -61,13 +60,13 @@ public static class SelectionLoader
         public List<JsonLineRange>? LineRanges { get; set; }
     }
 
-    private sealed class JsonLineRange
+    internal sealed class JsonLineRange
     {
         public int Start { get; set; }
         public int End { get; set; }
     }
 
-    private static EdgeOrigin ParseOrigin(int? n) => n switch
+    internal static EdgeOrigin ParseOrigin(int? n) => n switch
     {
         0 => EdgeOrigin.Static,
         1 => EdgeOrigin.Runtime,
