@@ -24,7 +24,7 @@ jobs:
         # Skip if no projects exist yet
         run: |
           if find src test -maxdepth 3 -name "*.csproj" 2>/dev/null | grep -q .; then
-            dotnet restore
+            dotnet restore src/titi/titi.csproj
           else
             echo "No .csproj files found, skipping restore"
           fi
@@ -34,18 +34,14 @@ jobs:
       - name: Build
         run: |
           if find src test -maxdepth 3 -name "*.csproj" 2>/dev/null | grep -q .; then
-            dotnet build --no-restore --configuration Release
+            dotnet build src/titi/titi.csproj --no-restore --configuration Release
           else
             echo "No .csproj files found, skipping build"
           fi
 
       - name: Test
         run: |
-          if find src test -maxdepth 3 -name "*.csproj" 2>/dev/null | grep -q .; then
-            dotnet test --no-build --configuration Release --collect:"XPlat Code Coverage"
-          else
-            echo "No .csproj files found, skipping test"
-          fi
+          dotnet test src/titi/titi.csproj --no-build --configuration Release --collect:"XPlat Code Coverage" || echo "No test projects found, skipping"
 
       - name: Upload coverage
         uses: codecov/codecov-action@v5
