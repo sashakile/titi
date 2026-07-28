@@ -127,7 +127,46 @@ public record TitiConfig(
     TestTierConfig TestTiers,
     IdeConfig Ide,
     CiConfig Ci
-);
+)
+{
+    /// <summary>Test detection configuration (TID-6)</summary>
+    public TestDetectionConfig TestDetection { get; init; } = new();
+}
+
+// ── TID-6: Test Detection Config ────────────────────────────────
+
+public enum CoverageFormat { Cobertura, OpenCover }
+
+public record TestDetectionConfig(
+    bool Enabled,
+    string VstestPath,
+    bool CollectCoverage,
+    CoverageFormat CoverageFormat,
+    string CacheDir,
+    double FallbackThreshold,
+    int AlwaysRunEvictionThreshold,
+    int BatchSize,
+    string[] ExcludePatterns
+)
+{
+    public static readonly TestDetectionConfig Default = new(
+        Enabled: false,
+        VstestPath: "dotnet",
+        CollectCoverage: false,
+        CoverageFormat: CoverageFormat.Cobertura,
+        CacheDir: ".titi/test-cache",
+        FallbackThreshold: 0.7,
+        AlwaysRunEvictionThreshold: 5,
+        BatchSize: 100,
+        ExcludePatterns: []
+    );
+
+    // Parameterless constructor for init-only usage
+    public TestDetectionConfig() : this(
+        false, "dotnet", false, CoverageFormat.Cobertura,
+        ".titi/test-cache", 0.7, 5, 100, []
+    ) { }
+}
 
 // ── Error Record ────────────────────────────────────────────────
 

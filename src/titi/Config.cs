@@ -95,6 +95,7 @@ public static class ConfigLoader
         var prefix = ExtractString(raw, ":prefix");
         var sourceRoot = ExtractString(raw, ":source-root") ?? ExtractString(raw, ":sourceRoot") ?? "src/";
         var versionPolicyStr = ExtractKeyword(raw, ":version-policy") ?? ExtractKeyword(raw, ":versionPolicy") ?? "semver-compatible";
+        var detectionEnabled = ExtractKeyword(raw, ":test-detection-enabled") == "true";
 
         var versionPolicy = versionPolicyStr switch
         {
@@ -111,7 +112,12 @@ public static class ConfigLoader
             TestTiers: Defaults.TestTiers,
             Ide: Defaults.Ide,
             Ci: Defaults.Ci
-        );
+        )
+        {
+            TestDetection = detectionEnabled
+                ? TestDetectionConfig.Default
+                : new TestDetectionConfig()
+        };
     }
 
     static string? ExtractString(string raw, string key)

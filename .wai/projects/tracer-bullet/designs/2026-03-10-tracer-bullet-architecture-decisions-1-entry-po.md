@@ -97,3 +97,20 @@ Tracer-bullet architecture decisions:
    Distribution: dotnet publish --self-contained -r <rid> or framework-dependent
    publish alongside the .NET runtime. Verify exact requirements against
    ClojureCLR.Next documentation before implementing.
+
+10. IMPLEMENTATION LANGUAGE (DECIDED 2026-07-28)
+    Decision: Initial tracer bullet implemented in C#, not ClojureCLR.
+    Rationale: ClojureCLR.Next 1.12.2 NuGet package ships no MSBuild targets
+    for compiling .clj files. No .props/.targets, no documented RT API for
+    loading .clj from embedded resources. Clojure.Main is a DotnetTool, not
+    a library.
+
+    C# implementation mirrors the architecture exactly — same namespace
+    structure (titi.interop, titi.config, titi.graph, titi.swap, titi.solution,
+    titi.core), same immutable record types, same module boundaries. Each .cs
+    file is a 1:1 mapping of the intended Clojure namespace.
+
+    Migration path: When ClojureCLR.Next matures its build pipeline, each .cs
+    file becomes either (a) a thin bootstrapper delegating to .clj files, or
+    (b) entirely replaced. No architectural debt — the data model and API
+    surface are unchanged.
