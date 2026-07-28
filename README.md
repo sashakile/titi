@@ -141,8 +141,24 @@ test-count reduction.
 The CLR process cold-start + graph-build budget for a 1000-project repo is
 approximately 30 seconds (DG-08). Set the minimum adapter timeout in
 testaruda's configuration (`testaruda.toml`) to at least 30s for small repos
-and 60s for large repos. AOT publishing would reduce this significantly
-(not yet benchmarked).
+and 60s for large repos.
+
+**Benchmark results** (CLR cold-start, `--help` only, 5 samples):
+
+| Mode   | Mean  | StdDev | Min  | Max  | mean+2σ |
+|--------|-------|--------|------|------|---------|
+| JIT    | 711ms | 19ms   | 691ms| 740ms| 749ms   |
+| AOT    | N/A   | N/A    | N/A  | N/A  | N/A     |
+
+> AOT is not currently viable: `System.Text.Json` uses reflection-heavy
+> anonymous-type serialization throughout the codebase (adapter, CLI,
+> cache), causing linker errors and IL3050 warnings when `PublishAot=true`.
+> AOT would require source-generated `JsonSerializerContext` across ~6
++files — tracked as future work.
+
+All measured cold-starts are well under the 30s testaruda default timeout.
+Budget the adapter timeout for **graph-build time**, not CLR cold-start.
+Re-run with `just benchmark-adapter-coldstart` to reproduce on your system.
 
 ### Configuration
 

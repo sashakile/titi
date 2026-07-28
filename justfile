@@ -43,6 +43,14 @@ titi-clean:
 # Run the full smoke test sequence
 smoke: titi-clean titi-open titi-affected
 
+# ── Benchmark ───────────────────────────────────────────────────
+
+# Benchmark CLR cold-start time for adapter timeout guidance.
+# Benchmark CLR cold-start time for adapter timeout guidance.
+# Delegates to scripts/benchmark-adapter-coldstart.sh
+benchmark-adapter-coldstart:
+    scripts/benchmark-adapter-coldstart.sh
+
 # Pack NuGet packages
 pack:
     cd {{project}} && dotnet pack src/titi/titi.csproj --configuration Release
