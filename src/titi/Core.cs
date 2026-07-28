@@ -252,8 +252,15 @@ public static class Program
             coberturaXml = File.ReadAllText(coveragePath);
         }
 
-        // Correlate TRX + Cobertura into per-test×source edges (CLI-21).
-        var ingest = Ingestor.IngestRun(trxXml, coberturaXml, repoRoot);
+        // Load prior run history so this ingest appends to it (TD-06).
+        var historyPath = Path.Combine(cacheDir, "history.edn");
+        var priorHistory = File.Exists(historyPath)
+            ? HistoryStore.ParseEdn(File.ReadAllText(historyPath))
+            : new Dictionary<string, Safety.TestRunEntry[]>();
+
+        // Correlate TRX + Cobertura into per-test×source edges (CLI-21), and
+        // update run history (TD-06).
+        var ingest = Ingestor.IngestRun(trxXml, coberturaXml, repoRoot, priorHistory);
 
         // CLI-21 "malformed input": exit 1, warn, do NOT modify the edge cache.
         if (ingest.IsMalformed)
@@ -263,8 +270,8 @@ public static class Program
         }
 
         // Only write the edge index when coverage was provided — a TRX-only
-        // ingest updates run history (deferred: task 4.6) but builds no edges,
-        // and must NOT overwrite a prior edge index with an empty array.
+        // ingest updates run history but builds no edges, and must NOT
+        // overwrite a prior edge index with an empty array.
         if (coberturaXml != null)
         {
             var edgesPath = Path.Combine(edgesDir, "edges.edn");
@@ -273,6 +280,15 @@ public static class Program
                     ingest.Edges.Select(e => new { e.From, e.To, e.Origin, e.Weight, e.LineRanges }),
                     new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
             Console.Error.WriteLine($"Wrote {ingest.Edges.Length} edges to {edgesPath}");
+        }
+
+        // Persist run history (TD-06): append entries, evict beyond 100/test,
+        // compact when the file exceeds 10 MB.
+        if (ingest.History != null)
+        {
+            var compacted = HistoryStore.CompactIfOversized(ingest.History);
+            File.WriteAllText(historyPath, HistoryStore.SerializeEdn(compacted));
+            Console.Error.WriteLine($"Wrote run history to {historyPath}");
         }
 
         Console.Error.WriteLine($"Ingested {ingest.Results.Length} test result(s) from {trxPath}.");
@@ -319,6 +335,12 @@ public static class Program
         Directory.CreateDirectory(runsRoot);
         Directory.CreateDirectory(edgesDir);
 
+        // Load prior run history so this recording appends to it (TD-06).
+        var historyPath = Path.Combine(cacheDir, "history.edn");
+        var history = File.Exists(historyPath)
+            ? HistoryStore.ParseEdn(File.ReadAllText(historyPath))
+            : new Dictionary<string, Safety.TestRunEntry[]>();
+
         var allEdges = new List<TestToSourceEdge>();
         var failures = 0;
         foreach (var plan in RecordPlanner.PlanTestRuns(testProjects, runsRoot))
@@ -344,6 +366,8 @@ public static class Program
                 }
 
                 var trxResults = titi.Coverage.Parser.ParseTrx(File.ReadAllText(trxPath));
+                // Update run history (TD-06): append this project's results.
+                history = HistoryStore.AppendResults(history, trxResults, DateTime.UtcNow);
                 string[] coveredSources = [];
                 if (coberturaPath != null)
                 {
@@ -369,6 +393,10 @@ public static class Program
                 allEdges.Select(e => new { e.From, e.To, e.Origin, e.Weight, e.LineRanges }),
                 new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
         File.WriteAllText(fingerprintPath, currentFingerprint);
+
+        // Persist run history (TD-06): evict beyond 100/test, compact >10MB.
+        var compactedHistory = HistoryStore.CompactIfOversized(history);
+        File.WriteAllText(historyPath, HistoryStore.SerializeEdn(compactedHistory));
 
         Console.Error.WriteLine($"Wrote {allEdges.Count} edges to {edgesPath}");
         if (failures > 0)

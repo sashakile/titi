@@ -13,7 +13,8 @@ using System.Xml.Linq;
 public record IngestResult(
     Coverage.TrxTestResult[] Results,
     TestToSourceEdge[] Edges,
-    bool IsMalformed);
+    bool IsMalformed,
+    Dictionary<string, Safety.TestRunEntry[]>? History);
 
 public static class Ingestor
 {
@@ -30,22 +31,36 @@ public static class Ingestor
     /// edges. Malformed TRX (unparseable or non-TestRun root) is distinguished
     /// from a valid-but-empty TRX: <see cref="IngestResult.IsMalformed"/> is true
     /// only for the former, so the caller can exit non-zero per CLI-21.
+    /// When <paramref name="priorHistory"/> is supplied, the returned
+    /// <see cref="IngestResult.History"/> is the appended+retained history
+    /// (TD-06); otherwise it is a fresh history from this run's results.
     /// </summary>
-    public static IngestResult IngestRun(string trxXml, string? coberturaXml, string sourceRoot)
+    public static IngestResult IngestRun(
+        string trxXml,
+        string? coberturaXml,
+        string sourceRoot,
+        Dictionary<string, Safety.TestRunEntry[]>? priorHistory = null,
+        DateTime? recordedAt = null)
     {
         if (!TryParseTrxStrict(trxXml, out var results, out var isMalformed))
-            return new IngestResult([], [], IsMalformed: true);
+            return new IngestResult([], [], IsMalformed: true, History: priorHistory);
 
         if (isMalformed)
-            return new IngestResult([], [], IsMalformed: true);
+            return new IngestResult([], [], IsMalformed: true, History: priorHistory);
+
+        // Update run history (TD-06): one entry per ingested result, retention 100.
+        var history = HistoryStore.AppendResults(
+            priorHistory ?? new Dictionary<string, Safety.TestRunEntry[]>(),
+            results,
+            recordedAt ?? DateTime.UtcNow);
 
         if (string.IsNullOrEmpty(coberturaXml))
-            return new IngestResult(results, [], IsMalformed: false);
+            return new IngestResult(results, [], IsMalformed: false, History: history);
 
         var coberturaEdges = Coverage.Parser.ParseCobertura(coberturaXml, sourceRoot);
         var coveredSources = coberturaEdges.Select(e => e.To).Distinct().ToArray();
         var edges = EdgeBuilder.BuildFromRun(results, coveredSources);
-        return new IngestResult(results, edges, IsMalformed: false);
+        return new IngestResult(results, edges, IsMalformed: false, History: history);
     }
 
     // Strict TRX parse: returns false (malformed) if the XML is unparseable or

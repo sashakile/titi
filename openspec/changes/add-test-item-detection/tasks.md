@@ -1,16 +1,16 @@
 ## 1. Domain types
-- [ ] 1.1 Define `TestItem` record: test-id, assembly-path, class-name, method-name, framework (:xunit | :nunit | :mstest), tier, source-file, last-outcome, mean-duration-ms, tags
-- [ ] 1.2 Define `TestToSourceEdge` record: from (test-id), to (source-file-path), origin (:static | :runtime | :manual), weight (ppm confidence), line-ranges
-- [ ] 1.3 Define `AlwaysRunReason` enum: LAST-RUN-FAILED, NEWLY-ADDED, NO-HISTORY, MUST-RUN, QUARANTINED
-- [ ] 1.4 Define `FallbackReason` enum: CONFIDENCE-BELOW-THRESHOLD, UNRESOLVED-FILE, ADAPTER-FAILURE, ENVIRONMENT-CHANGE
-- [ ] 1.5 Define `MissedSelectionIncident` record: changed-content, missed-test-id, timestamp, status (candidate | promoted | dismissed)
-- [ ] 1.6 Define `TestSelectionResult` record: test-id, selected?, reasons (vector of reason-kind + description chains), confidence, fallback-reason
-- [ ] 1.7 Modify `TieredTestSet`: add `items` field (map of tier → vector of TestItem); `unit`, `integration`, etc. now contain both projects and items
-- [ ] 1.8 Add `selectedTests` field to `AffectedSet`
+- [x] 1.1 Define `TestItem` record: test-id, assembly-path, class-name, method-name, framework (:xunit | :nunit | :mstest), tier, source-file, last-outcome, mean-duration-ms, tags
+- [x] 1.2 Define `TestToSourceEdge` record: from (test-id), to (source-file-path), origin (:static | :runtime | :manual), weight (ppm confidence), line-ranges
+- [x] 1.3 Define `AlwaysRunReason` enum: LAST-RUN-FAILED, NEWLY-ADDED, NO-HISTORY, MUST-RUN, QUARANTINED
+- [x] 1.4 Define `FallbackReason` enum: CONFIDENCE-BELOW-THRESHOLD, UNRESOLVED-FILE, ADAPTER-FAILURE, ENVIRONMENT-CHANGE
+- [x] 1.5 Define `MissedSelectionIncident` record: changed-content, missed-test-id, timestamp, status (candidate | promoted | dismissed)
+- [x] 1.6 Define `TestSelectionResult` record: test-id, selected?, reasons (vector of reason-kind + description chains), confidence, fallback-reason
+- [x] 1.7 Modify `TieredTestSet`: add `items` field (map of tier → vector of TestItem); `unit`, `integration`, etc. now contain both projects and items
+- [x] 1.8 Add `selectedTests` field to `AffectedSet`
 
 ## 2. Test discovery via VSTest
 - [x] 2.1 Implement `dotnet test --list-tests` invocation for a given .csproj (on .NET 10, **console text** output — no JSON mode exists for `--list-tests`; auto-detect JSON-vs-console in the parser)
-- [ ] 2.2 Parse VSTest `--list-tests` output into `TestItem` records (xUnit/NUnit/MSTest format detection)
+- [x] 2.2 Parse VSTest `--list-tests` output into `TestItem` records (xUnit/NUnit/MSTest format detection)
 - [ ] 2.3 Handle parameterized tests: one TestItem per data row; zero-row MemberData produces zero items with project-level fallback; warn if >1000 cases per method
 - [ ] 2.4 Implement `discover_test_items(project-path)` — returns vector of TestItem for one project
 - [ ] 2.5 Implement `discover_test_items(repo)` — enumerates across all test projects in graph, grouped by tier
@@ -19,8 +19,8 @@
 - [ ] 2.8 Validate VSTest output parsing against real (not synthetic) xUnit, NUnit, and MSTest projects with nested classes, generics, and parameterized tests — create these fixtures in addition to the synthetic monorepo fixture
 
 ## 3. Test-to-source dependency edges
-- [ ] 3.1 Implement Cobertura XML coverage parser for `dotnet test --collect "XPlat Code Coverage"` output
-- [ ] 3.2 Implement `build_edges_from_coverage(cobertura-xml)` → vector of TestToSourceEdge (one per test×source-file pair)
+- [x] 3.1 Implement Cobertura XML coverage parser for `dotnet test --collect "XPlat Code Coverage"` output
+- [x] 3.2 Implement `build_edges_from_coverage(cobertura-xml)`  (EdgeBuilder.BuildFromRun) → vector of TestToSourceEdge (one per test×source-file pair)
 - [x] 3.3 Implement `build_edges_from_trx(trx-path)` → per-test duration and outcome  (Coverage.Parser.ParseTrx → TrxTestResult[]; per-test outcome + duration + error, TD-02)
 - [x] 3.4 Wire coverage and TRX together: invoke tests once, collect both outputs, build edge set  (EdgeBuilder.BuildFromRun(trxResults, coveredSources); file-level cross-product, From=testName To=sourceFile, Origin=Static weight=1_000_000; skips NotExecuted tests)
 - [ ] 3.5 Store test-to-source edges in `.titi/test-cache/edges/` with source file fingerprints
@@ -34,10 +34,10 @@
 - [ ] 4.3 Implement confidence scoring: ratio of resolved changed-files to total changed-files, coverage freshness, history depth
 - [ ] 4.4 Implement fallback logic: if confidence below threshold, fall back to project-level selection for affected test projects (select all tests in the project)
 - [ ] 4.5 Implement missed-selection incident recording and promotion
-- [ ] 4.6 Persist run history in `.titi/test-cache/history.edn` (EDN format: test-id → vector of {:test-id :outcome :duration-ms :timestamp}), with retention (max 100 entries per test) and compaction (>10 MB triggers cleanup)
+- [x] 4.6 Persist run history in `.titi/test-cache/history.edn` (EDN format: test-id -> vector of {:test-id :outcome :duration-ms :timestamp}), with retention (max 100 entries per test) and compaction (>10 MB triggers cleanup)  (HistoryStore.AppendResults/SerializeEdn/ParseEdn/CompactIfOversized; minimal recursive-descent EDN reader for the emitted subset; wired into Ingestor.IngestRun + TestsIngestCommand + TestsRecordCommand; verified record -> history.edn, ingest appends to existing)
 
 ## 5. CLI commands
-- [ ] 5.1 Implement `titi tests list <project-pat>` — enumerate test items, optionally filtered by tier
+- [x] 5.1 Implement `titi tests list <project-pat>` — enumerate test items, optionally filtered by tier
 - [x] 5.2 Implement `titi tests ingest <trx-path> [--coverage <cobertura-path>]` — parse results and update edge cache; TRX-Cobertura correlation produces per-test×source-file edges  (Ingestor.IngestRun -> EdgeBuilder.BuildFromRun; edges keyed From=testName To=sourceFile, written to .titi/test-cache/edges/edges.edn; malformed TRX -> exit 1 no cache modification; TRX-only -> no edges written, preserves prior index; history deferred to 4.6)
 - [x] 5.3 Implement `titi tests record` — run all test projects with coverage, ingest results, build edge index (ci-performed)  (Core.TestsRecordCommand: graph->test-projects->dotnet test --collect XPlat --logger trx->ArtifactLocator->ParseTrx+ParseCobertura->EdgeBuilder->.titi/test-cache/edges/; content-based fingerprint incremental skip)
 - [ ] 5.4 Upgrade `titi test-manifest` with `--select` flag: when enabled, emit per-test-filtered Traversal using `dotnet test --filter`; framework-aware filter syntax (xUnit `~`, NUnit `==`, MSTest `TestCategory` or `~`); batch splitting when filter >4000 chars
@@ -46,7 +46,7 @@
 - [ ] 5.7 Add exit code 10 (run full suite) when confidence fallback fires; exit code 20 (safe to skip) when selected tests is empty
 
 ## 6. Configuration
-- [ ] 6.1 Add `TestDetectionConfig` to `TitiConfig`:
+- [x] 6.1 Add `TestDetectionConfig` to `TitiConfig`:
   - `enabled` (boolean, default: false)
   - `vstest-path` (string, default: "dotnet")
   - `collect-coverage` (boolean, default: false — set true by `titi tests record`)
