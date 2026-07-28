@@ -329,9 +329,9 @@ public class ReplTests
         Assert.Contains("Unknown.Pkg", errText);
     }
 
-    /// <summary>Affected command shows affected projects.</summary>
+    /// <summary>Affected command shows all projects when git is unavailable (fallback).</summary>
     [Fact]
-    public void Repl_AffectedCommand_ShowsAffected()
+    public void Repl_AffectedCommand_FallbackToAll()
     {
         var input = new StringReader("affected\nquit\n");
         var output = new StringWriter();
@@ -341,9 +341,27 @@ public class ReplTests
 
         Assert.Equal(0, exitCode);
         var outText = output.ToString();
-        // With no git info, shows all projects
+        // With no git repo, all projects are directly affected
         Assert.Contains("Orion.Core.Data", outText);
         Assert.Contains("Orion.App", outText);
+        Assert.Contains("Total:", outText);
+    }
+
+    /// <summary>Affected command with --from ref passes the argument to git diff.</summary>
+    [Fact]
+    public void Repl_AffectedCommand_WithFromRef()
+    {
+        var input = new StringReader("affected --from HEAD~5\nquit\n");
+        var output = new StringWriter();
+        var error = new StringWriter();
+
+        var exitCode = ReplEngine.Run(MakeTestGraph(), input, output, error);
+
+        Assert.Equal(0, exitCode);
+        // Git will fail since /repo doesn't exist, but it should not crash
+        // and should fall back to showing all projects
+        var outText = output.ToString();
+        Assert.Contains("Orion.Core.Data", outText);
     }
 
     /// <summary>Tree command shows tree view (root nodes with their dependency subtrees).</summary>

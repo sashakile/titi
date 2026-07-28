@@ -3,6 +3,8 @@
 
 namespace titi.Repl;
 
+using titi.Affected;
+
 /// <summary>Interactive read-eval-print loop for graph exploration.</summary>
 public static class ReplEngine
 {
@@ -68,7 +70,7 @@ public static class ReplEngine
                     break;
 
                 case "affected":
-                    PrintAffected(graph, output);
+                    PrintAffected(graph, args, output, error);
                     break;
 
                 case "tree":
@@ -247,18 +249,49 @@ public static class ReplEngine
         output.WriteLine($"Dependents:      {node.Dependents.Length}");
     }
 
-    static void PrintAffected(MonorepoGraph graph, TextWriter output)
+    static void PrintAffected(MonorepoGraph graph, string[] args, TextWriter output, TextWriter error)
     {
-        // In the REPL, without git context, all projects are considered "affected"
-        foreach (var node in graph.Nodes.Values.OrderBy(n => n.Project.PackageId))
+        // Parse --from <ref> argument
+        var baseRef = "HEAD~1";
+        for (int i = 0; i < args.Length; i++)
         {
-            output.WriteLine($"{node.Project.PackageId}");
-            output.WriteLine($"  Depth: {node.Depth}");
-            output.WriteLine($"  Path: {node.Project.Path}");
-            output.WriteLine($"  Type: {(node.Project.IsTestProject ? "test" : "library")}");
-            output.WriteLine();
+            if (args[i] == "--from" && i + 1 < args.Length)
+                baseRef = args[i + 1];
         }
-        output.WriteLine($"Total: {graph.Nodes.Count} project(s)");
+
+        // Get changed files from git
+        var (changedFiles, gitErr) = Analyzer.GetChangedFiles(graph.RepoRoot, baseRef);
+
+        if (gitErr != null)
+        {
+            error.WriteLine($"Warning: git diff failed: {gitErr}");
+        }
+
+        // Build affected set
+        var affected = Analyzer.BuildAffectedSet(changedFiles, graph);
+
+        if (affected.DirectlyAffected.Length == 0 && affected.TransitivelyAffected.Length == 0)
+        {
+            output.WriteLine("No affected projects.");
+            return;
+        }
+
+        output.WriteLine("Directly affected:");
+        foreach (var proj in affected.DirectlyAffected.OrderBy(p => p.PackageId))
+        {
+            output.WriteLine($"  {proj.PackageId}");
+        }
+
+        if (affected.TransitivelyAffected.Length > 0)
+        {
+            output.WriteLine("Transitively affected:");
+            foreach (var proj in affected.TransitivelyAffected.OrderBy(p => p.PackageId))
+            {
+                output.WriteLine($"  {proj.PackageId}");
+            }
+        }
+
+        output.WriteLine($"Total: {affected.DirectlyAffected.Length + affected.TransitivelyAffected.Length} project(s)");
     }
 
     static void PrintTree(MonorepoGraph graph, TextWriter output)
