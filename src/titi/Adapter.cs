@@ -15,6 +15,7 @@ using titi.Affected;
 using titi.Safety;
 using titi.TestManifest;
 using titi.TestDiscovery;
+using titi.Core;
 
 /// <summary>
 /// Handles the testaruda adapter protocol: handshake, discover, static-deps,
@@ -514,7 +515,8 @@ public static class TestarudaAdapter
     /// <summary>
     /// Discover all test items from test projects in the graph.
     /// Uses DiscoveryCache to load or run discovery. When the cache doesn't
-    /// exist or discovery fails for a project, that project is skipped.
+    /// exist or is stale, runs dotnet test --list-tests to discover test items.
+    /// Failures are handled gracefully — problematic projects get empty results.
     /// </summary>
     static Dictionary<string, TestItem[]> DiscoverAllTestItems(MonorepoGraph? graph)
     {
@@ -535,10 +537,15 @@ public static class TestarudaAdapter
             var fingerprint = DiscoveryCache.ComputeFingerprint(projDir, proj.Path);
             var items = DiscoveryCache.GetOrDiscover(cacheDir, proj.PackageId, fingerprint, () =>
             {
-                // In the adapter subprocess context, we can't run dotnet test
-                // interactively — this callback should only fire when the cache
-                // is pre-populated (e.g., by a prior `titi tests list` run).
-                return [];
+                // Run dotnet test --list-tests to discover test items.
+                // This is the same logic used by `titi affected` in Core.cs.
+                var (stdout, stderr, ok) = Program.RunDotnetListTests(proj.Path, graph.RepoRoot);
+                if (!ok)
+                {
+                    Console.Error.WriteLine($"  warning: list-tests failed for {proj.PackageId}: {stderr.Split('\n').FirstOrDefault()}");
+                    return [];
+                }
+                return TestDiscovery.Parser.Parse(stdout, TestTier.Unit);
             });
             if (items.Length > 0)
                 result[proj.PackageId] = items;
