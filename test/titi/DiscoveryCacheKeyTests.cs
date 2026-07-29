@@ -104,4 +104,18 @@ public class DiscoveryCacheKeyTests
         }
     }
 
+    [Fact]
+    public void Keys_AreDeterministic_AcrossCalls()
+    {
+        // The same package id must yield the same key across calls (and process
+        // runs) so cache entries are reusable; distinct ids must never collide.
+        var key1 = DiscoveryCache.CacheKey("Orion.UnitTests");
+        var key2 = DiscoveryCache.CacheKey("Orion.UnitTests");
+        Assert.Equal(key1, key2);
+
+        Assert.NotEqual(
+            DiscoveryCache.CacheKey("Orion.UnitTests"),
+            DiscoveryCache.CacheKey("Orion.UnitTestz"));
+    }
+
 }

@@ -132,7 +132,7 @@ public class TestItemCacheTests : IDisposable
         DiscoveryCache.Store(cacheDir, "test-proj", fingerprint, SampleItems);
 
         // Corrupt the items file
-        var itemsPath = Path.Combine(cacheDir, "items", "test-proj", "items.json");
+        var itemsPath = Path.Combine(cacheDir, "items", DiscoveryCache.CacheKey("test-proj"), "items.json");
         File.WriteAllText(itemsPath, "not json");
 
         var loaded = DiscoveryCache.Load(cacheDir, "test-proj", fingerprint);
@@ -147,9 +147,9 @@ public class TestItemCacheTests : IDisposable
 
         DiscoveryCache.Store(cacheDir, "test-proj", "abc", SampleItems);
 
-        Assert.True(Directory.Exists(Path.Combine(cacheDir, "items", "test-proj")));
-        Assert.True(File.Exists(Path.Combine(cacheDir, "items", "test-proj", "items.json")));
-        Assert.True(File.Exists(Path.Combine(cacheDir, "items", "test-proj", "fingerprint")));
+        Assert.True(Directory.Exists(Path.Combine(cacheDir, "items", DiscoveryCache.CacheKey("test-proj"))));
+        Assert.True(File.Exists(Path.Combine(cacheDir, "items", DiscoveryCache.CacheKey("test-proj"), "items.json")));
+        Assert.True(File.Exists(Path.Combine(cacheDir, "items", DiscoveryCache.CacheKey("test-proj"), "fingerprint")));
     }
 
     [Fact]
@@ -159,7 +159,7 @@ public class TestItemCacheTests : IDisposable
         var cacheDir = Path.Combine(_tempDir, "cache");
         DiscoveryCache.Store(cacheDir, "test-proj", "abc", SampleItems);
 
-        var itemsJson = File.ReadAllText(Path.Combine(cacheDir, "items", "test-proj", "items.json"));
+        var itemsJson = File.ReadAllText(Path.Combine(cacheDir, "items", DiscoveryCache.CacheKey("test-proj"), "items.json"));
         var parsed = JsonSerializer.Deserialize<JsonElement>(itemsJson);
         Assert.Equal(JsonValueKind.Array, parsed.ValueKind);
         Assert.Equal(2, parsed.GetArrayLength());

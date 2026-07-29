@@ -34,7 +34,7 @@ public class DiscoveryCacheColdStartTests
             Assert.Empty(result);
 
             // Cold start with empty result should NOT write fingerprint or items.json
-            var itemDir = Path.Combine(cacheDir, "items", "Test.Package");
+            var itemDir = Path.Combine(cacheDir, "items", DiscoveryCache.CacheKey("Test.Package"));
             Assert.False(Directory.Exists(itemDir),
                 "Cold empty discovery must not create cache directory");
         }
@@ -57,7 +57,7 @@ public class DiscoveryCacheColdStartTests
                 "abc123",
                 () => []);
 
-            var itemsPath = Path.Combine(cacheDir, "items", "Test.Package", "items.json");
+            var itemsPath = Path.Combine(cacheDir, "items", DiscoveryCache.CacheKey("Test.Package"), "items.json");
             Assert.False(File.Exists(itemsPath),
                 "Cold empty discovery must not write items.json");
         }
@@ -84,7 +84,7 @@ public class DiscoveryCacheColdStartTests
             Assert.Equal("NS.C", result[0].ClassName);
 
             // Should have written cache
-            var itemDir = Path.Combine(cacheDir, "items", "HasTests.Pkg");
+            var itemDir = Path.Combine(cacheDir, "items", DiscoveryCache.CacheKey("HasTests.Pkg"));
             Assert.True(Directory.Exists(itemDir));
         }
         finally
@@ -142,7 +142,7 @@ public class DiscoveryCacheColdStartTests
             Assert.Equal(2, result.Length);
 
             // Cache should be written
-            var itemDir = Path.Combine(cacheDir, "items", "Real.Pkg");
+            var itemDir = Path.Combine(cacheDir, "items", DiscoveryCache.CacheKey("Real.Pkg"));
             Assert.True(Directory.Exists(itemDir));
         }
         finally
