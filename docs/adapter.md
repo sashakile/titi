@@ -54,12 +54,13 @@ provides a complete static symbol model but does not trace runtime call edges.
 
 ## Known Limitations
 
-- **Process lifetime**: The adapter is a long-lived process for the duration of
-  one testaruda invocation. It builds the `MonorepoGraph` once during handshake
-  (in-memory) and answers all commands from that in-memory state. It holds a
-  read-only reference to `.titi/graph.cache` and never acquires the writer lock
-  at query time. Run `titi cache warm` before invoking testaruda to avoid
-  writer contention.
+- **Startup discovery**: The adapter builds the `MonorepoGraph` once during handshake
+  (in-memory) and then discovers test items for all test projects by running
+  `dotnet test --list-tests` on cold cache. Results are cached in
+  `.titi/test-cache/items/` so subsequent invocations are fast. Test projects are
+  detected via well-known test-SDK package references (xunit, NUnit, MSTest,
+  Microsoft.NET.Test.Sdk) when the MSBuild `IsTestProject` property is not
+  explicitly set.
 - **Framework detection**: The adapter reports `xunit` as the framework for all
   test projects at the project level. NUnit/MSTest projects are normalized to
   `xunit` in the handshake; method-level framework detection uses the VSTest
