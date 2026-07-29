@@ -439,6 +439,10 @@ public static class TestarudaAdapter
             var responseJson = ProcessCommand(request, graph, discoveredTests, stdout);
             stdout.WriteLine(responseJson);
             stdout.Flush();
+
+            // Terminate the loop immediately after shutdown — don't read further commands
+            if (request.Command == "shutdown")
+                break;
         }
 
         return 0;

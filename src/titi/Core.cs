@@ -56,7 +56,11 @@ public static class Program
 
     static (MonorepoGraph? Graph, TitiConfig? Config, int ExitCode) BuildGraphForRepo()
     {
-        var repoRoot = Environment.CurrentDirectory;
+        // Allow override via TESTARUDA_PROJECT_DIR so the wrapper script can cd
+        // to a neutral directory (avoiding target repo's global.json SDK paths)
+        // while still discovering projects in the target repo (testaruda-vx7).
+        var testarudaDir = Environment.GetEnvironmentVariable("TESTARUDA_PROJECT_DIR");
+        var repoRoot = testarudaDir ?? Environment.CurrentDirectory;
 
         var (config, configErr) = ConfigLoader.Load(repoRoot);
         if (configErr != null)
