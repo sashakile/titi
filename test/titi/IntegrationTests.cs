@@ -2,7 +2,6 @@
 
 namespace titi.Tests;
 
-using System.Diagnostics;
 using System.Text.Json;
 
 public class IntegrationTests
@@ -10,40 +9,16 @@ public class IntegrationTests
     static readonly string FixtureDir = Path.GetFullPath(
         Path.Combine(AppContext.BaseDirectory, "../../../../../test/fixtures/sample-monorepo"));
 
-    static readonly string ProjectPath = Path.GetFullPath(
-        Path.Combine(AppContext.BaseDirectory, "../../../../../src/titi/titi.csproj"));
-
     /// <summary>Run titi open Orion.Core.Data against the sample-monorepo fixture.</summary>
     [Fact]
     public void TitiOpen_AgainstFixture_GeneratesSlnx()
     {
-        // Arrange
-        var startInfo = new ProcessStartInfo
-        {
-            FileName = "dotnet",
-            Arguments = $"run --project \"{ProjectPath}\" -- open Orion.Core.Data",
-            WorkingDirectory = FixtureDir,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-        };
+        var (output, stderr) = TitiTestRunner.RunTitiAndParseJson(
+            ["open", "Orion.Core.Data"], FixtureDir);
 
-        // Act
-        using var proc = Process.Start(startInfo);
-        Assert.NotNull(proc);
-        var stdout = proc.StandardOutput.ReadToEnd();
-        var stderr = proc.StandardError.ReadToEnd();
-        proc.WaitForExit(30000);
-
-        // Assert: exit code 0
-        Assert.True(proc.ExitCode == 0, $"Exit code {proc.ExitCode}: {stderr}");
-
-        // Assert: JSON output with solutionPath
-        var output = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(stdout);
-        Assert.NotNull(output);
-        Assert.True(output.ContainsKey("solutionPath"));
-
-        var slnxPath = output["solutionPath"].GetString();
+        Assert.True(output.RootElement.TryGetProperty("solutionPath", out var slnxProp),
+            $"Expected 'solutionPath' in JSON output. Stderr: {stderr}");
+        var slnxPath = slnxProp.GetString();
         Assert.NotNull(slnxPath);
         var fullSlnxPath = Path.IsPathRooted(slnxPath) ? slnxPath : Path.Combine(FixtureDir, slnxPath);
         Assert.True(File.Exists(fullSlnxPath), $".slnx not found at {fullSlnxPath}");
@@ -70,22 +45,9 @@ public class IntegrationTests
         Directory.CreateDirectory(titiDir);
         File.WriteAllText(Path.Combine(titiDir, "test.txt"), "hello");
 
-        var startInfo = new ProcessStartInfo
-        {
-            FileName = "dotnet",
-            Arguments = $"run --project \"{ProjectPath}\" -- clean",
-            WorkingDirectory = FixtureDir,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-        };
+        var (stdout, stderr, exitCode) = TitiTestRunner.RunTiti(["clean"], FixtureDir, 5000);
 
-        using var proc = Process.Start(startInfo);
-        Assert.NotNull(proc);
-        var stderr = proc.StandardError.ReadToEnd();
-        proc.WaitForExit(5000);
-
-        Assert.True(proc.ExitCode == 0, $"Exit code {proc.ExitCode}: {stderr}");
+        Assert.True(exitCode == 0, $"Exit code {exitCode}: {stderr}");
         Assert.False(Directory.Exists(titiDir), ".titi/ should be removed");
     }
 }
