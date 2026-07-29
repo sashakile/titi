@@ -112,11 +112,11 @@ public static class Analyzer
 
             foreach (var dep in node.Dependents)
             {
-                // dep.From is the dependent (consumer), dep.To is the dependency
-                if (visited.Add(dep.From))
+                // dep.To is the consumer, dep.From is the dependency
+                if (visited.Add(dep.To))
                 {
-                    transitiveSet.Add(dep.From);
-                    queue.Enqueue(dep.From);
+                    transitiveSet.Add(dep.To);
+                    queue.Enqueue(dep.To);
                 }
             }
         }
