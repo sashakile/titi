@@ -9,6 +9,11 @@ restore:
     cd {{project}} && dotnet restore src/titi/titi.csproj --locked-mode
     cd {{project}} && dotnet restore test/titi/titi.Tests.csproj --locked-mode
 
+# Setup development environment (hooks, etc.)
+setup:
+    git config core.hooksPath .githooks
+    echo "Hooks configured: $PWD/.githooks"
+
 # Build the CLI project (requires restore first)
 build:
     cd {{project}} && dotnet build src/titi/titi.csproj

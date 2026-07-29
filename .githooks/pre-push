@@ -1,0 +1,36 @@
+#!/bin/bash
+# pre-push hook: run local tests before pushing
+# Aborts the push if tests fail.
+
+set -euo pipefail
+
+REPO_ROOT=$(git rev-parse --show-toplevel)
+echo "🔍 Running pre-push checks..."
+
+# Step 1: Verify locked-mode restore
+echo "   Restoring with locked mode..."
+cd "$REPO_ROOT"
+dotnet restore src/titi/titi.csproj --locked-mode 2>/dev/null || {
+  echo "❌ FAILED: dotnet restore --locked-mode failed. Regenerate lock files with:"
+  echo "   rm src/titi/packages.lock.json test/titi/packages.lock.json && dotnet restore"
+  exit 1
+}
+dotnet restore test/titi/titi.Tests.csproj --locked-mode 2>/dev/null || {
+  echo "❌ FAILED: dotnet restore --locked-mode failed. Regenerate lock files with:"
+  echo "   rm src/titi/packages.lock.json test/titi/packages.lock.json && dotnet restore"
+  exit 1
+}
+
+# Step 2: Run tests (exclude slow integration tests)
+echo "   Running tests..."
+cd "$REPO_ROOT"
+dotnet test test/titi/titi.Tests.csproj --no-restore --filter "Category!=Integration" 2>&1 | tail -3
+EXIT_CODE="${PIPESTATUS[0]}"
+
+if [ "$EXIT_CODE" -ne 0 ]; then
+  echo "❌ FAILED: Tests did not pass. Fix before pushing."
+  exit 1
+fi
+
+echo "✅ Pre-push checks passed."
+exit 0
