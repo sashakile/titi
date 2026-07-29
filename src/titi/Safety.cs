@@ -69,13 +69,15 @@ public static class Selection
         string[] changedFiles)
     {
         var results = new List<TestSelectionResult>();
-        // Normalize changed files once: both the raw string and a path-suffix
-        // form, so repo-relative ("src/Foo.cs") matches absolute edge paths
-        // ("/repo/src/Foo.cs") without a raw substring test (which false-
-        // positives on "Foo.cs" vs "/repo/src/NotFoo.cs").
+        // Canonicalize changed files once: reduce each to its repo-relative
+        // path (the canonical key used for matching). This makes absolute
+        // edge paths ("/repo/src/a/Foo.cs") match repo-relative changed files
+        // ("a/Foo.cs") without a raw substring test, AND prevents same-basename
+        // collisions (a/Foo.cs vs b/Foo.cs) by comparing the full relative path
+        // rather than just the last segment.
         var changedSet = new HashSet<string>(changedFiles, StringComparer.Ordinal);
-        var changedSuffixes = changedFiles
-            .Select(NormalizePathSuffix)
+        var changedCanonical = changedFiles
+            .Select(CanonicalRelativePath)
             .Where(s => !string.IsNullOrEmpty(s))
             .ToHashSet(StringComparer.Ordinal);
 
@@ -99,7 +101,7 @@ public static class Selection
                 if (edge.From != item.TestId)
                     continue;
 
-                if (IsPathMatch(edge.To, changedSet, changedSuffixes))
+                if (IsPathMatch(edge.To, changedSet, changedCanonical))
                 {
                     reasons.Add(("edge-match", $"Source file {edge.To} changed"));
                     matched = true;
@@ -123,31 +125,52 @@ public static class Selection
     }
 
     // Match an edge's source path against the changed-file set. Direct
-    // equality (handles already-normalized inputs) or a path-suffix match
-    // (handles repo-relative vs absolute). Segment-aware: "Foo.cs" does NOT
-    // match "/repo/src/NotFoo.cs" because the suffix is compared on path
-    // segments, not a raw string substring.
-    private static bool IsPathMatch(string edgeTo, HashSet<string> changedSet, HashSet<string> changedSuffixes)
+    // equality handles already-normalized inputs; otherwise compare canonical
+    // segment-joined tail-suffixes of the edge path against the precomputed
+    // changed-file set. This is segment-aware on the FULL relative path, not
+    // just the basename, so a/Foo.cs does not match changed b/Foo.cs while
+    // /repo/src/a/Foo.cs still matches repo-relative a/Foo.cs.
+    private static bool IsPathMatch(string edgeTo, HashSet<string> changedSet, HashSet<string> changedCanonical)
     {
         if (changedSet.Contains(edgeTo))
             return true;
-        var edgeSuffix = NormalizePathSuffix(edgeTo);
-        if (string.IsNullOrEmpty(edgeSuffix))
-            return false;
-        return changedSuffixes.Contains(edgeSuffix);
+        var segs = edgeTo.Replace('\\', '/')
+            .Split('/', StringSplitOptions.RemoveEmptyEntries);
+        // Walk tail-suffixes from the last segment upward (shortest first), so
+        // a longer changed path wins over a coincidental single-segment suffix.
+        for (int start = segs.Length - 1; start >= 0; start--)
+        {
+            var suffix = string.Join('/', segs[start..]);
+            if (changedCanonical.Contains(suffix))
+                return true;
+        }
+        return false;
     }
 
-    // Reduce a path to its segment tail for suffix comparison. Uses '/' as the
-    // universal separator (git diff and Cobertura both use '/'); falls back to
-    // the OS separator. Returns the full path if it has no separators.
-    private static string NormalizePathSuffix(string path)
+    // Reduce a path to its canonical segment-joined form: normalize
+    // separators to '/' and collapse '.'/'..' segments without touching the
+    // disk. Repo-relative inputs ("a/Foo.cs") pass through unchanged; this is
+    // the key compared against the edge's tail-suffixes.
+    private static string CanonicalRelativePath(string path)
     {
         if (string.IsNullOrEmpty(path))
             return "";
-        var fwd = path.LastIndexOf('/');
-        var back = path.LastIndexOf('\\');
-        var idx = Math.Max(fwd, back);
-        return idx < 0 ? path : path[(idx + 1)..];
+        var segments = path.Replace('\\', '/')
+            .Split('/', StringSplitOptions.RemoveEmptyEntries);
+        var stack = new List<string>(segments.Length);
+        foreach (var seg in segments)
+        {
+            if (seg == ".")
+                continue;
+            if (seg == "..")
+            {
+                if (stack.Count > 0)
+                    stack.RemoveAt(stack.Count - 1);
+                continue;
+            }
+            stack.Add(seg);
+        }
+        return string.Join('/', stack);
     }
 
     /// <summary>Record a missed-selection incident.</summary>

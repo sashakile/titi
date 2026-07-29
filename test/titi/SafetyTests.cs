@@ -222,4 +222,52 @@ public class SafetyTests
         Assert.Equal(IncidentStatus.Candidate, incident.Status);
         Assert.Contains(incidents, i => i.MissedTestId == "missed-test-42");
     }
+
+    // ── titi-k2x.8: canonical repo-relative path matching ─────
+
+    [Fact]
+    public void ComputeSelectedTests_SameBasename_DifferentDirs_DoNotCrossMatch()
+    {
+        // Bug: suffix matching reduced to the basename, so an edge to
+        // a/Foo.cs was selected when b/Foo.cs changed. Selection must compare
+        // canonical repo-relative paths, not just the last path segment.
+        var testItems = new[]
+        {
+            new TestItem("test-A", "/asm.dll", "C", "A", TestFramework.Xunit, TestTier.Unit,
+                null, TestOutcome.Passed, 0, []),
+        };
+        var edges = new[]
+        {
+            new TestToSourceEdge("test-A", "/repo/src/a/Foo.cs", EdgeOrigin.Static, 1_000_000, []),
+        };
+
+        // Changed file is in a DIFFERENT directory but same basename.
+        var results = titi.Safety.Selection.ComputeSelectedTests(testItems, edges, [], ["b/Foo.cs"]);
+
+        var a = Assert.Single(results);
+        Assert.False(a.Selected,
+            "edge to a/Foo.cs must not match changed b/Foo.cs (basename collision)");
+    }
+
+    [Fact]
+    public void ComputeSelectedTests_SameRelativePath_Matches_AbsoluteAndRelative()
+    {
+        // Repo-relative and absolute representations of the same in-root file
+        // must still match after canonicalization.
+        var testItems = new[]
+        {
+            new TestItem("test-A", "/asm.dll", "C", "A", TestFramework.Xunit, TestTier.Unit,
+                null, TestOutcome.Passed, 0, []),
+        };
+        var edges = new[]
+        {
+            new TestToSourceEdge("test-A", "/repo/src/a/Foo.cs", EdgeOrigin.Static, 1_000_000, []),
+        };
+
+        var results = titi.Safety.Selection.ComputeSelectedTests(testItems, edges, [], ["a/Foo.cs"]);
+
+        var a = Assert.Single(results);
+        Assert.True(a.Selected,
+            "edge to /repo/src/a/Foo.cs must match changed a/Foo.cs after canonicalization");
+    }
 }

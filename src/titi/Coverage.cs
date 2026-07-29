@@ -132,7 +132,14 @@ public static class Parser
                     if (string.IsNullOrEmpty(filename))
                         continue;
 
-                    var sourcePath = Path.Combine(sourceRoot, filename);
+                    // Canonicalize the coverage filename against sourceRoot and
+                    // reject paths that escape it. coverlet emits sourceRoot-
+                    // relative filenames, but the report is caller-controlled:
+                    // a '..' segment or absolute path outside sourceRoot would
+                    // produce edges that cross-match files outside the repo.
+                    var sourcePath = ResolveUnderRoot(filename, sourceRoot);
+                    if (sourcePath == null)
+                        continue;
 
                     // Collect line ranges
                     var lineRanges = new List<(int Start, int End)>();
@@ -187,5 +194,47 @@ public static class Parser
         {
             return [];
         }
+    }
+
+    // Canonicalize a coverage filename against sourceRoot. Accepts sourceRoot-
+    // relative paths (coverlet), absolute paths under sourceRoot, and rejects
+    // anything that escapes via '..' or resolves outside the root. Returns null
+    // for out-of-root paths so the caller skips the edge entirely.
+    private static string? ResolveUnderRoot(string filename, string sourceRoot)
+    {
+        if (string.IsNullOrEmpty(filename) || string.IsNullOrEmpty(sourceRoot))
+            return null;
+
+        // Normalize separators to '/' for the combine step on all platforms.
+        var normalizedFilename = filename.Replace('\\', '/');
+        var normalizedRoot = sourceRoot.Replace('\\', '/').TrimEnd('/');
+
+        string combined = normalizedFilename.StartsWith('/')
+            ? normalizedFilename
+            : normalizedRoot + "/" + normalizedFilename;
+
+        // Collapse '..' / '.' segments canonically without touching the disk.
+        var segments = combined.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        var stack = new List<string>(segments.Length);
+        foreach (var seg in segments)
+        {
+            if (seg == ".")
+                continue;
+            if (seg == "..")
+            {
+                if (stack.Count == 0)
+                    return null; // escapes the root
+                stack.RemoveAt(stack.Count - 1);
+                continue;
+            }
+            stack.Add(seg);
+        }
+
+        var canonical = "/" + string.Join('/', stack);
+        var rootPrefix = normalizedRoot + "/";
+        // Containment: canonical must be the root itself or live under it.
+        if (canonical != normalizedRoot && !canonical.StartsWith(rootPrefix, StringComparison.Ordinal))
+            return null;
+        return canonical;
     }
 }
