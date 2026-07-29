@@ -12,6 +12,7 @@
     <PackageTags>msbuild;monorepo;solution;affected;testaruda;dotnet</PackageTags>
     <PackageOutputPath>$(MSBuildThisFileDirectory)dist/nupkg</PackageOutputPath>
     <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
   </PropertyGroup>
 
 </Project>

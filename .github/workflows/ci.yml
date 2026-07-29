@@ -20,11 +20,12 @@ jobs:
           global-json-file: global.json
 
       - name: Restore dependencies
-        run: |
-          dotnet restore src/titi/titi.csproj
-          dotnet restore test/titi/titi.Tests.csproj
         env:
           CI: true
+        run: |
+          dotnet restore src/titi/titi.csproj --locked-mode
+          dotnet restore test/titi/titi.Tests.csproj --locked-mode
+          dotnet restore test/titi/titi.Tests.csproj
 
       - name: Build
         run: |

@@ -1,0 +1,139 @@
+{
+  "version": 1,
+  "dependencies": {
+    "net10.0": {
+      "Clojure": {
+        "type": "Direct",
+        "requested": "[1.12.2, )",
+        "resolved": "1.12.2",
+        "contentHash": "XvUPpS902AXixh4j4kBvfqQqDx4hzZooqAKbncyAXw9newJ2t5+1/4527uLwN9aEDK76FSaDDdEvGzl9JWtCHA==",
+        "dependencies": {
+          "DynamicLanguageRuntime": "1.3.5",
+          "System.Runtime.Serialization.Formatters": "9.0.3",
+          "clojure.core.specs.alpha": "0.4.74",
+          "clojure.spec.alpha": "0.5.238",
+          "clojure.tools.reader": "1.5.0"
+        }
+      },
+      "Microsoft.Build": {
+        "type": "Direct",
+        "requested": "[18.8.2, )",
+        "resolved": "18.8.2",
+        "contentHash": "o30Qy4z+5KbJgHo+nmOt4sqrnIvb3BQlpEtE+Izlfk9eQKvppwHZGfQ1JUmFfkdcVpqZkgbqCPnqIkI/98dcIA==",
+        "dependencies": {
+          "Microsoft.Build.Framework": "18.8.2",
+          "System.Configuration.ConfigurationManager": "10.0.4",
+          "System.Diagnostics.EventLog": "10.0.4",
+          "System.Reflection.MetadataLoadContext": "10.0.4",
+          "System.Security.Cryptography.ProtectedData": "10.0.4"
+        }
+      },
+      "Microsoft.Build.Framework": {
+        "type": "Direct",
+        "requested": "[18.8.2, )",
+        "resolved": "18.8.2",
+        "contentHash": "0rH2AaR+TyRhISTU3DEW1pskvOCrBa3QlHnItRqtBTExfCi14CxYNL3/COXxCfd+H40h2WB3XOYSYUlF5IFIwA==",
+        "dependencies": {
+          "Microsoft.NET.StringTools": "18.8.2"
+        }
+      },
+      "Microsoft.Build.Locator": {
+        "type": "Direct",
+        "requested": "[1.11.2, )",
+        "resolved": "1.11.2",
+        "contentHash": "tY+/S54G29CGsbL3slVu4vqtpciwVnb3fKOmrhgzEQmu/VziFaWmD/E1e/2KH7cDucuycGSkWsSXndBs5Uawow=="
+      },
+      "Microsoft.DotNet.ILCompiler": {
+        "type": "Direct",
+        "requested": "[10.0.10, )",
+        "resolved": "10.0.10",
+        "contentHash": "KJQz6JT6pLarTlNvBrlzutaEiG9ZNJHQKN6QMWXKyTjKYQaJAfYypX6VyO0TfMNCFCUTv0zeD6P/UQ17mL6hjw=="
+      },
+      "Microsoft.NET.ILLink.Tasks": {
+        "type": "Direct",
+        "requested": "[10.0.10, )",
+        "resolved": "10.0.10",
+        "contentHash": "7F8LiRTi6o/mMDa8yd3KDNmGM/+W8K7H4qVHxM52Vr10tkXdwXT8rJ2xLBELDk1vIJTZhEAWYhpMJ9YvhXiqBA=="
+      },
+      "Microsoft.VisualStudio.SolutionPersistence": {
+        "type": "Direct",
+        "requested": "[1.0.52, )",
+        "resolved": "1.0.52",
+        "contentHash": "oNv2JtYXhpdJrX63nibx1JT3uCESOBQ1LAk7Dtz/sr0+laW0KRM6eKp4CZ3MHDR2siIkKsY8MmUkeP5DKkQQ5w=="
+      },
+      "clojure.core.specs.alpha": {
+        "type": "Transitive",
+        "resolved": "0.4.74",
+        "contentHash": "MslxwCw9Y3Tnc5i0AF1rXo1At0U6dR05fWyiSed8rZbirGgIs4anLv80pXS60Id3qO1EnZml7zAZh+eNqdtP/Q==",
+        "dependencies": {
+          "clojure.spec.alpha": "0.5.238"
+        }
+      },
+      "clojure.spec.alpha": {
+        "type": "Transitive",
+        "resolved": "0.5.238",
+        "contentHash": "ctUkI33hy/CNgu6JMWLdLLlmcWDRFM49PvsMlARPFRIgTkTVniT+m06Nn3XFT0kVh5KDRAWuTpMGdq44Et0fgg==",
+        "dependencies": {
+          "clojure.test.check": "1.1.2"
+        }
+      },
+      "clojure.test.check": {
+        "type": "Transitive",
+        "resolved": "1.1.2",
+        "contentHash": "0NR4lxVPJZKZgf01fpUV+LKEEKosTIURvg+hFNipwNtwRxKVUtWO/yaqCZHjb0mFJPsMQ4yDaejlMf6l0Lel7w=="
+      },
+      "clojure.tools.reader": {
+        "type": "Transitive",
+        "resolved": "1.5.0",
+        "contentHash": "nGJ3aUGdRpx3GOMmy8ksHpzxTT2wXJUo+nzD3tJWKXjI3Sd7ufpDa5FkMmG0UqVZKwve5ijXx6oDyr+DAoE7fg=="
+      },
+      "DynamicLanguageRuntime": {
+        "type": "Transitive",
+        "resolved": "1.3.5",
+        "contentHash": "HHCVAlsIe8eBuj0bxh+0zCflYPeu+WSmP5iJ2J+oqd9wa1j7kcw70hiGPxoDPSoLM/RRLGXUdvj7ISkelxLpNw==",
+        "dependencies": {
+          "System.CodeDom": "8.0.0"
+        }
+      },
+      "Microsoft.NET.StringTools": {
+        "type": "Transitive",
+        "resolved": "18.8.2",
+        "contentHash": "TWyg687GoiC9dhj85CagUfYFKYtxRX2jv5raO+zolLVmvKIS1k5WXYh8IMvyiPP5f9r9/snpmTZioyCO5zh+ww=="
+      },
+      "System.CodeDom": {
+        "type": "Transitive",
+        "resolved": "8.0.0",
+        "contentHash": "WTlRjL6KWIMr/pAaq3rYqh0TJlzpouaQ/W1eelssHgtlwHAH25jXTkUphTYx9HaIIf7XA6qs/0+YhtLEQRkJ+Q=="
+      },
+      "System.Configuration.ConfigurationManager": {
+        "type": "Transitive",
+        "resolved": "10.0.4",
+        "contentHash": "4u3HLMYQqnTIF26VUiKhSuXtjFIvEfnwK9ZBUa4bXEc1koQCCkZx6ss5urKjqqimJMtuPHDKPHDchxkgoDNhjQ==",
+        "dependencies": {
+          "System.Diagnostics.EventLog": "10.0.4",
+          "System.Security.Cryptography.ProtectedData": "10.0.4"
+        }
+      },
+      "System.Diagnostics.EventLog": {
+        "type": "Transitive",
+        "resolved": "10.0.4",
+        "contentHash": "xXo5NcIPeMUMfpo9Efl/3Rgomjb/Jfa3Aa0BgSfqYctN4YpwjPzvIrnD9JTwoKqe3pFtLF9vmtMl892+wwZ6EA=="
+      },
+      "System.Reflection.MetadataLoadContext": {
+        "type": "Transitive",
+        "resolved": "10.0.4",
+        "contentHash": "kVaDOAIi02+yd7AZFNpZ88UZcBESiDI1Ib9l592QvZCYUA/xJloAucRAbyEnuOB+ubrpITGb8cMa3g8NhwLUIA=="
+      },
+      "System.Runtime.Serialization.Formatters": {
+        "type": "Transitive",
+        "resolved": "9.0.3",
+        "contentHash": "SxDMhFgwaxDlDRf/YKibLXCrf2bBururwUahiZiFrdZIiBe0rG40AA/Mu0Z1tTltT3jDv13A0HOpiiBlr5jbqQ=="
+      },
+      "System.Security.Cryptography.ProtectedData": {
+        "type": "Transitive",
+        "resolved": "10.0.4",
+        "contentHash": "LmDnaYkcWkZSlZ07L7YcB6bH8sCiBZ7j28kPbYiXdF6f0iUiN7rxsRORlZGdj5saN/wZIqvF7lDBn/cpjU+e2g=="
+      }
+    }
+  }
+}

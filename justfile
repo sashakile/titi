@@ -4,11 +4,16 @@
 project := justfile_directory()
 fixture := project + "/test/fixtures/sample-monorepo"
 
-# Build the CLI project
+# Restore dependencies with locked mode for deterministic builds
+restore:
+    cd {{project}} && dotnet restore src/titi/titi.csproj --locked-mode
+    cd {{project}} && dotnet restore test/titi/titi.Tests.csproj --locked-mode
+
+# Build the CLI project (requires restore first)
 build:
     cd {{project}} && dotnet build src/titi/titi.csproj
 
-# Build in Release
+# Build in Release (requires restore first)
 build-release:
     cd {{project}} && dotnet build src/titi/titi.csproj --configuration Release
 
