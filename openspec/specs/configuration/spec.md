@@ -2,7 +2,7 @@
 
 ## Purpose
 
-The configuration capability defines how titi reads, validates, and exposes its `titi.config.json` file, including all sub-sections for cache, test tiers, IDE integration, and CI behaviour.
+The configuration capability defines how titi reads, validates, and exposes its `titi.config.json` file. The loader supports a limited set of root-level fields (prefix, source-roots, version-policy, and test-detection flags); all other top-level keys are rejected with E009. Aspirational sections (cache, test-tiers, ide, ci) are not currently consumed and will be added in future releases.
 
 ## Requirements
 
@@ -17,7 +17,7 @@ The system SHALL locate `titi.config.json` by walking up from the current workin
 
 #### Scenario: No config file found
 - **WHEN** no `titi.config.json` exists anywhere in the directory ancestry
-- **THEN** the system applies built-in defaults (versionPolicy=SEMVER_COMPATIBLE, cache.enabled=true, cache.directory=".titi/") and emits a warn-level diagnostic suggesting the user run `titi init` to create an explicit config file
+- **THEN** the system applies built-in defaults (versionPolicy=SEMVER_COMPATIBLE, sourceRoot=["src/"]) and emits a warn-level diagnostic suggesting the user run `titi init` to create an explicit config file
 
 #### Scenario: Current directory not in a git repository
 - **WHEN** config discovery is attempted and the current working directory is not inside any git repository
@@ -25,115 +25,65 @@ The system SHALL locate `titi.config.json` by walking up from the current workin
 
 ### Requirement CF-02: Core Configuration Fields
 
-The system SHALL parse the `TitiConfig` root with required fields `prefix` (string, e.g. `"Orion."`), `sourceRoot` (path relative to repo root), and `versionPolicy` (STRICT | SEMVER_COMPATIBLE | FORCE, default: SEMVER_COMPATIBLE), and treat all other fields as optional with documented defaults. The config SHALL include a `schemaVersion` field (integer, default: 1). When the loaded `schemaVersion` is higher than the version supported by the running titi binary, the system SHALL emit E009 with a suggestion to upgrade titi. When the loaded `schemaVersion` is lower, the system SHALL apply forward-compatible defaults for any fields added in later schema versions.
+The system SHALL parse the `TitiConfig` root with the following consumed fields:
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `prefix` | string | `""` | Namespace prefix for package/version detection |
+| `source-root` | string | — | Single source root path relative to repo root (singular, backwards-compatible) |
+| `sourceRoot` | string | — | Alias for `source-root` (camelCase backwards-compatible form) |
+| `source-roots` | array of strings | `["src/"]` | Multi-root alternative: list of repo-relative source directories |
+| `version-policy` | string | `"semver-compatible"` | Version policy: `"strict"`, `"semver-compatible"`, or `"force"` |
+| `versionPolicy` | string | — | Alias for `version-policy` (camelCase backwards-compatible form) |
+| `test-detection-enabled` | boolean | `false` | Enable test-scope-from-coverage detection algorithm |
+| `fallback-threshold` | number | `0.7` | Confidence threshold (0–1) for fallback to full project set |
+
+When `source-roots` (plural array) is present it takes precedence; `source-root`/`sourceRoot` (singular string) is used only when the plural form is absent. If neither is provided the default `["src/"]` applies.
+
+Any top-level key not listed above SHALL be rejected with E009 listing every unsupported key in a single error message.
 
 #### Scenario: Valid minimal config
-- **GIVEN** a config file with only `prefix`, `sourceRoot`, and `versionPolicy`
+- **GIVEN** a config file with only `prefix`
 - **WHEN** the config is loaded
-- **THEN** all three fields are populated and optional sections use defaults
+- **THEN** all consumed fields use their defaults and no error is raised
 
-#### Scenario: Missing required field
-- **GIVEN** the config file omits `prefix`
+#### Scenario: Unsupported top-level keys
+- **GIVEN** a config file containing unsupported sections like `cache`, `test-tiers`, `ide`, or `ci`
 - **WHEN** the config is loaded
-- **THEN** the system emits E009 naming the missing field
+- **THEN** E009 is emitted listing every unsupported key, and the config is rejected
 
-### Requirement CF-03: Cache Configuration
+### Requirement CF-03: Test Detection Configuration (TID-6)
 
-The system SHALL read a `CacheConfig` sub-section specifying `enabled` (boolean, default: `true`), `directory` (default: `.titi/`), `maxAge` (duration string: integer followed by a unit suffix — `s` for seconds, `m` for minutes, `h` for hours, `d` for days; default: `"24h"`), and `globalTriggers` (list of file paths that force full graph invalidation, defaulting to `["Directory.Build.props", "Directory.Build.targets", "Directory.Packages.props"]`).
+The system SHALL read `test-detection-enabled` (boolean) and `fallback-threshold` (number, 0–1) from the config root. When `test-detection-enabled` is `true`, the system activates coverage-driven test selection with the configured fallback threshold. Values of `fallback-threshold` outside the [0, 1] range SHALL be rejected with E009.
 
-> **Note:** `cache.directory` (default `".titi/"`) is the root artifact directory for titi-generated files — including `graph.cache`, `solutions/`, `manifests/`, and `logs/`. All specs reference paths under this directory using the default value `.titi/` for readability (avoiding `$(cache.directory)` in every path reference). Implementations SHALL substitute `$(cache.directory)` for every `.titi/` prefix when processing paths at runtime. When `cache.directory` is not configured, the default `.titi/` applies (see CF-01). The default `.titi/` MUST be listed in the repo's `.gitignore`. When `cache.directory` is configured to a non-default value, titi SHALL emit a warn-level diagnostic at startup if that path is not covered by the repo's `.gitignore`, recommending the user add it to prevent titi-generated artifacts from being committed.
+> **Note:** The full `TestDetectionConfig` record includes additional fields (vstest-path, collect-coverage, coverage-format, cache-dir, always-run-eviction-threshold, batch-size, exclude-patterns) that are currently hard-coded to defaults and not user-configurable. They will be exposed as config fields in a future release.
 
-#### Scenario: Cache disabled
-- **GIVEN** `cache.enabled = false`
-- **WHEN** any command requiring the graph runs
-- **THEN** the graph is always rebuilt from scratch without reading or writing the cache file
-
-#### Scenario: Custom global triggers
-- **GIVEN** `cache.globalTriggers` includes `"global.json"`
-- **WHEN** `global.json` is modified
-- **THEN** the graph cache is fully invalidated on next use
-
-### Requirement CF-04: Test Tier Configuration
-
-The system SHALL read a `TestTierConfig` defining glob patterns for `unit`, `package`, `integration`, and `compatibility` test project tiers, plus a `defaultTier` for projects that match no pattern. Tier globs SHALL be evaluated in the order: `unit`, `package`, `integration`, `compatibility`; the first matching tier wins. The tiers are defined as:
-- **unit**: isolated tests with no external dependencies
-- **package**: tests for a library as consumers would use it (contract/package-level integration)
-- **integration**: tests crossing service or domain boundaries
-- **compatibility**: tests verifying a new version against existing consumers
-
-#### Scenario: Project matches unit glob
-- **GIVEN** `testTiers.unit = ["**/*.UnitTests.csproj"]`
-- **WHEN** a project path matches that glob
-- **THEN** the project is assigned to the `unit` tier in TieredTestSet
-
-#### Scenario: Project matches no glob
-- **GIVEN** a test project matching none of the configured globs
-- **WHEN** the affected set is computed
-- **THEN** the project is assigned to `defaultTier`
-
-### Requirement CF-05: IDE Configuration
-
-The system SHALL read an `IdeConfig` with `launchCommand` (executable path), `args` (argument template), and `autoOpen` (boolean) to control how `titi open` launches the IDE. The placeholder `{solution_path}` in `ide.args` is substituted with the absolute path of the generated `.slnx` file before the argument string is passed to the launch command.
-
-#### Scenario: IDE auto-open enabled
-- **GIVEN** `ide.autoOpen = true` and `ide.launchCommand = "rider"`
-- **WHEN** `titi open <project>` completes solution generation
-- **THEN** the system invokes `rider` with the generated .slnx path
-
-#### Scenario: IDE auto-open disabled
-- **GIVEN** `ide.autoOpen = false`
-- **WHEN** `titi open <project>` runs
-- **THEN** the .slnx is generated but no IDE process is spawned
-
-#### Scenario: IDE launch command not found
-- **GIVEN** `ide.autoOpen = true` and `ide.launchCommand = "rider"` but `rider` is not on PATH
-- **WHEN** `titi open <project>` completes solution generation
-- **THEN** the .slnx is generated, a warn-level diagnostic reports the launch failure, and the command exits with code 0
-
-### Requirement CF-06: CI Configuration
-
-The system SHALL read a `CiConfig` with `fullRegressionBranches` (list of branch name patterns), `maxParallelism` (integer), and `outputFormat` (`"json"` | `"text"` | `"github-actions"`). When a CLI `--output` flag is also provided, the CLI flag SHALL take precedence over `ci.outputFormat`; when both are absent, the default is `"text"` (see `diagnostics` spec, DX-04).
-
-#### Scenario: Full regression on main
-- **GIVEN** `ci.fullRegressionBranches = ["main", "release/*"]` and the current branch is `"main"`
-- **WHEN** affected-set computation runs in CI
-- **THEN** all projects are included regardless of changed files
-
-#### Scenario: GitHub Actions output format
-- **GIVEN** `ci.outputFormat = "github-actions"`
-- **WHEN** a command produces output in CI
-- **THEN** errors are formatted as `::error::` annotations
-
-### Requirement CF-07: Config Validation
-
-The system SHALL validate the loaded config on startup and surface all validation errors at once rather than failing on the first error found.
-
-#### Scenario: Multiple validation errors reported together
-- **GIVEN** a config with an invalid `versionPolicy` value and a non-existent `sourceRoot` path
+#### Scenario: test-detection-enabled true with custom threshold
+- **GIVEN** `test-detection-enabled: true` and `fallback-threshold: 0.9`
 - **WHEN** the config is loaded
-- **THEN** both errors are reported in a single E009 diagnostic before the command aborts
+- **THEN** test detection is enabled with the custom threshold
 
-### Requirement CF-08: External Prerequisites
+#### Scenario: fallback-threshold outside valid range
+- **GIVEN** `fallback-threshold: -0.1` or `fallback-threshold: 1.5`
+- **WHEN** the config is loaded
+- **THEN** E009 is emitted and the config is rejected
 
-The system SHALL document and validate the following minimum external tool versions at startup when the corresponding feature is used:
-- **.NET SDK**: >= 8.0 (minimum supported for all MSBuild operations; repositories MAY pin a newer SDK via `global.json`, and titi SHALL prefer the repo-pinned SDK when present)
-- **Nerdbank.GitVersioning (NBGV)**: >= 3.6 (required for `titi version detect/apply`)
-- **Microsoft.DotNet.ApiCompat.Tool**: >= 8.0 (required for cascading bump API surface analysis)
-- **git**: >= 2.25 (required for affected-set computation)
+#### Scenario: test-detection-enabled false (default)
+- **GIVEN** no `test-detection-enabled` in config
+- **WHEN** the config is loaded
+- **THEN** test detection is disabled, using defaults
 
-When a required tool is missing or below the minimum version, the system SHALL emit the appropriate error code (E007 for .NET SDK, E008 for git environment, E012 for ApiCompat) with a suggestion including the minimum required version. NBGV is validated alongside the version commands; if NBGV is missing or below version 3.6, the system SHALL emit E013 (NBGV_NOT_FOUND) with a suggestion to install Nerdbank.GitVersioning >= 3.6.
+### Requirement CF-04: Config Validation
 
-#### Scenario: .NET SDK version too low
-- **GIVEN** the installed .NET SDK is version 6.0
-- **WHEN** any MSBuild-dependent command is invoked
-- **THEN** E007 is emitted with a suggestion to upgrade to .NET SDK >= 8.0
+The system SHALL validate the loaded config on startup. The following validations SHALL be performed:
 
-#### Scenario: NBGV tool missing
-- **GIVEN** `Nerdbank.GitVersioning` (NBGV) NuGet package is not referenced or the NBGV CLI tool is below version 3.6
-- **WHEN** any `titi version` command is invoked
-- **THEN** E013 (NBGV_NOT_FOUND) is emitted with a suggestion to install Nerdbank.GitVersioning >= 3.6
+- **Unknown top-level keys**: any key not listed in CF-02 is rejected with E009 listing all unsupported keys
+- **fallback-threshold range**: rejected with E009 if outside [0, 1]
+- **Source-root path warnings**: absolute paths and non-existent directories produce a warn-level diagnostic but do not prevent loading
 
-#### Scenario: git version too low
-- **GIVEN** git is installed but at version 2.20
-- **WHEN** `titi affected` is invoked
-- **THEN** E008 (GIT_ENVIRONMENT_ERROR) is emitted with a suggestion to upgrade git to >= 2.25
+When the config file itself is not valid JSON, the system SHALL emit E009 with a parse error message.
+
+#### Scenario: Multiple validation issues reported
+- **GIVEN** a config with an unsupported key AND an invalid `fallback-threshold` value
+- **WHEN** the config is loaded
+- **THEN** E009 is emitted with the first validation failure encountered

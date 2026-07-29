@@ -146,34 +146,34 @@ The system SHALL meet the following performance targets on commodity hardware (4
 
 ### Requirement DG-09: Single-Writer Concurrency
 
-The system SHALL assume single-writer access to the `cache.directory` (see `configuration` spec, CF-03). The system SHALL use a lock file (`$(cache.directory)/graph.cache.lock`) to coordinate single-writer access. If a titi command detects that another titi process holds the lock, it SHALL wait up to 10 seconds for the lock to release, then emit a warn-level diagnostic and proceed with a fresh in-memory graph build rather than reading a partially written cache.
+The system SHALL assume single-writer access to the `.titi/` artifact directory (the `cache.directory` config field is aspirational — future release). The system SHALL use a lock file (`.titi/graph.cache.lock`) to coordinate single-writer access. If a titi command detects that another titi process holds the lock, it SHALL wait up to 10 seconds for the lock to release, then emit a warn-level diagnostic and proceed with a fresh in-memory graph build rather than reading a partially written cache.
 
-> **Wait-time vs write-time:** DG-08 budgets up to 30 seconds for a cold graph build on a 1000-project repo, so a `titi cache warm` may legitimately hold the lock longer than the 10-second wait. On large repos a concurrent invocation will therefore often fall back to a fresh in-memory build, doubling wall-clock for that invocation. This is accepted: the lock prevents cache corruption, and the fallback preserves correctness. Readers that prefer to use a stale-but-usable cache instead of rebuilding MAY do so when the existing `$(cache.directory)/graph.cache` is valid per GC-02 (the fallback to fresh build is the conservative default).
+> **Wait-time vs write-time:** DG-08 budgets up to 30 seconds for a cold graph build on a 1000-project repo, so a `titi cache warm` may legitimately hold the lock longer than the 10-second wait. On large repos a concurrent invocation will therefore often fall back to a fresh in-memory build, doubling wall-clock for that invocation. This is accepted: the lock prevents cache corruption, and the fallback preserves correctness. Readers that prefer to use a stale-but-usable cache instead of rebuilding MAY do so when the existing `.titi/graph.cache` is valid per GC-02 (the fallback to fresh build is the conservative default).
 
 > **Write mechanism reference:** The actual cache data is written atomically using a tmp-file-then-rename protocol defined in the `graph-cache` spec, GC-08. This lock protocol prevents concurrent writers from interfering with each other; the atomic write protocol ensures readers never observe a partially written file.
 
 The lock protocol SHALL follow this state machine:
 
-1. **UNLOCKED** → writer creates `$(cache.directory)/graph.cache.lock` containing its PID and timestamp → **ACQUIRED**
-2. **ACQUIRED** → writer begins writing `$(cache.directory)/graph.cache.tmp` → **WRITING**
-3. **WRITING** → writer completes the tmp file and atomically renames it to `$(cache.directory)/graph.cache` → **RENAMED**
-4. **RENAMED** → writer deletes `$(cache.directory)/graph.cache.lock` → **UNLOCKED**
+1. **UNLOCKED** → writer creates `.titi/graph.cache.lock` containing its PID and timestamp → **ACQUIRED**
+2. **ACQUIRED** → writer begins writing `.titi/graph.cache.tmp` → **WRITING**
+3. **WRITING** → writer completes the tmp file and atomically renames it to `.titi/graph.cache` → **RENAMED**
+4. **RENAMED** → writer deletes `.titi/graph.cache.lock` → **UNLOCKED**
 
 Crash recovery by state:
 - Crash during **ACQUIRED**: lock file exists, no `.tmp` file. Next process detects stale lock via PID liveness check and removes it.
-- Crash during **WRITING**: lock file and partial `.tmp` file exist. Next process detects stale lock, removes both the lock and the orphaned `.tmp` file, and proceeds. The previous `$(cache.directory)/graph.cache` (if any) remains intact.
-- Crash during **RENAMED**: `$(cache.directory)/graph.cache` is valid (rename completed). Lock file is orphaned. Next process detects stale lock and removes it.
+- Crash during **WRITING**: lock file and partial `.tmp` file exist. Next process detects stale lock, removes both the lock and the orphaned `.tmp` file, and proceeds. The previous `.titi/graph.cache` (if any) remains intact.
+- Crash during **RENAMED**: `.titi/graph.cache` is valid (rename completed). Lock file is orphaned. Next process detects stale lock and removes it.
 
 Stale lock detection SHALL use OS-level PID liveness checks (e.g. `kill(pid, 0)` on POSIX, `OpenProcess` on Windows). If the recorded PID is not running, the lock is considered stale. PID reuse is mitigated by also checking the lock file's timestamp: a lock older than 60 seconds with a non-running PID is unconditionally stale.
 
 > **Two-cleaner race:** If two processes start simultaneously and both observe an orphaned lock (e.g. post-crash RENAMED state), both may attempt to remove it and acquire. Stale-lock removal SHALL therefore use an atomic create-with-exclusive-flag step (O_EXCL on POSIX, `CREATE_NEW` on Windows) for the replacement lock file: the first process to succeed wins, and the loser observes a now-live lock and waits normally per the 10-second rule above.
 
 #### Scenario: Concurrent titi invocation
-- **GIVEN** one `titi cache warm` process is writing to `$(cache.directory)/graph.cache`
+- **GIVEN** one `titi cache warm` process is writing to `.titi/graph.cache`
 - **WHEN** a second `titi affected` process starts and detects the lock
 - **THEN** the second process waits up to 10 seconds; if the lock is released, it reads the cache normally; if not, it emits a warning and builds the graph from scratch
 
 #### Scenario: Stale lock file
-- **GIVEN** a `$(cache.directory)/graph.cache.lock` file exists but the owning process is no longer running
+- **GIVEN** a `.titi/graph.cache.lock` file exists but the owning process is no longer running
 - **WHEN** a titi command starts
 - **THEN** the system detects the stale lock (e.g. via PID check), removes it, and proceeds normally with a diagnostic note

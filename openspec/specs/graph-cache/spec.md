@@ -4,7 +4,7 @@
 
 The graph cache capability persists the computed `MonorepoGraph` to the graph cache file and implements a tiered invalidation strategy to avoid unnecessary full graph rebuilds.
 
-> **Path convention:** Paths follow `$(cache.directory)` (see `configuration` spec, CF-03); defaults are shown as `.titi/` for readability.
+> **Path convention:** Paths follow `.titi/` as the artifact directory. The `cache.directory` config field is aspirational (future release); currently `.titi/` is hard-coded.
 > **Concurrency reference:** The write-side concurrency protocol (lock file, stale detection, crash recovery) is defined in the `dependency-graph` spec, DG-09. This spec defines the atomic-write mechanism (tmp-then-rename) that operates within the lock already held by the writer.
 
 ## Requirements

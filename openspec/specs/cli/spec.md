@@ -4,7 +4,7 @@
 
 The CLI capability defines the command-line interface surface for titi, covering all Phase 1, Phase 2, and Phase 3 commands, their arguments, exit codes, and output behaviour.
 
-> **Path convention:** Paths follow `$(cache.directory)` (see `configuration` spec, CF-03); defaults are shown as `.titi/` for readability.
+> **Path convention:** Paths follow `.titi/` as the artifact directory. The `cache.directory` config field is aspirational (future release); currently `.titi/` is hard-coded.
 
 > **Structural note — capability scope:** This spec is intentionally broad: it owns the *CLI surface* (argument parsing, exit codes, output formatting) for every titi command, even when a command's behaviour is owned by another capability. Where a command's semantics are defined elsewhere, the requirement text defers to that capability (e.g. CLI-11 references `versioning` VN-11; CLI-15 references `bundles` BN-02; CLI-06 references `dependency-graph` DG-04/DG-06). Only CLI-wide concerns (global flags CLI-17, exit codes CLI-18, output format) are owned outright here. This keeps a single discovery point for the CLI surface while keeping behaviour co-located with its capability. Per the phasing in `project.md`, command groups are prioritised by phase, not by their order in this file.
 
@@ -285,7 +285,7 @@ The system SHALL support the following global flags on the `titi` root command:
 - `titi --help`: prints a summary of all available commands and exits with code 0
 - `titi --version`: prints the current titi version string and exits with code 0
 - `titi --verbose`: enables debug-level diagnostic output on stderr (see `diagnostics` spec, DX-03)
-- `titi --output <text|json|github-actions>`: selects the output format for command results and diagnostics; takes precedence over `ci.outputFormat` in config (see `diagnostics` spec, DX-04, and `configuration` spec, CF-06); default is `text`
+- `titi --output <text|json|github-actions>`: selects the output format for command results and diagnostics (see `diagnostics` spec, DX-04); the `ci.outputFormat` config field is aspirational (future release); default is `text`
 - Every subcommand SHALL support `--help`, printing that subcommand's usage and exiting with code 0
 
 #### Scenario: Help flag exits cleanly

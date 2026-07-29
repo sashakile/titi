@@ -4,7 +4,7 @@
 
 The solution generation capability creates transient .slnx solution files scoped to a target project and its dependency closure, stored under the configured cache directory and excluded from version control.
 
-> **Path convention:** Paths follow `$(cache.directory)` (see `configuration` spec, CF-03); defaults are shown as `.titi/` for readability.
+> **Path convention:** Paths follow `.titi/` as the artifact directory. The `cache.directory` config field is aspirational (future release); currently `.titi/` is hard-coded.
 
 ## Requirements
 
