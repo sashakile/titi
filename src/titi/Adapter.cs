@@ -24,13 +24,21 @@ public static class TestarudaAdapter
 {
     // ── Protocol types ───────────────────────────────────────────
 
+    /// <summary>Handshake capabilities sub-object.</summary>
+    public record CapabilitiesResponse(
+        [property: JsonPropertyName("symbol_model_complete")] bool SymbolModelComplete,
+        [property: JsonPropertyName("fingerprinting")] bool Fingerprinting,
+        [property: JsonPropertyName("runtime_edges")] bool RuntimeEdges
+    );
+
     /// <summary>Handshake response payload.</summary>
     public record HandshakeResponse(
         [property: JsonPropertyName("name")] string Name,
+        [property: JsonPropertyName("version")] string Version,
+        [property: JsonPropertyName("protocol")] int Protocol,
         [property: JsonPropertyName("languages")] string[] Languages,
         [property: JsonPropertyName("granularity")] string Granularity,
-        [property: JsonPropertyName("symbol_model_complete")] bool SymbolModelComplete,
-        [property: JsonPropertyName("runtime_edges")] bool RuntimeEdges
+        [property: JsonPropertyName("capabilities")] CapabilitiesResponse Capabilities
     );
 
     /// <summary>An adapter test item (method-level granularity in Phase 2).</summary>
@@ -82,10 +90,15 @@ public static class TestarudaAdapter
     {
         return new HandshakeResponse(
             Name: "titi",
+            Version: "0.1.0",
+            Protocol: 1,
             Languages: ["csharp"],
             Granularity: "method",
-            SymbolModelComplete: true,
-            RuntimeEdges: false
+            Capabilities: new CapabilitiesResponse(
+                SymbolModelComplete: true,
+                Fingerprinting: true,
+                RuntimeEdges: false
+            )
         );
     }
 
@@ -351,43 +364,43 @@ public static class TestarudaAdapter
     /// <summary>Format an error response JSON.</summary>
     public static string FormatErrorResponse(string message)
     {
-        return JsonSerializer.Serialize(new { error = message });
+        return JsonSerializer.Serialize(new { ok = false, error = new { message } });
     }
 
     /// <summary>Format a handshake response as JSON.</summary>
     public static string FormatResponse(HandshakeResponse response)
     {
-        return JsonSerializer.Serialize(new { result = response });
+        return JsonSerializer.Serialize(new { ok = true, result = response });
     }
 
     /// <summary>Format discover items as JSON.</summary>
     public static string FormatResponse(AdapterTestItem[] items)
     {
-        return JsonSerializer.Serialize(new { result = new { tests = items } });
+        return JsonSerializer.Serialize(new { ok = true, result = new { tests = items } });
     }
 
     /// <summary>Format static-deps items as JSON.</summary>
     public static string FormatResponse(StaticDepsItem[] items)
     {
-        return JsonSerializer.Serialize(new { result = new { affected_tests = items } });
+        return JsonSerializer.Serialize(new { ok = true, result = new { affected_tests = items } });
     }
 
     /// <summary>Format fingerprint data as JSON.</summary>
     public static string FormatResponse(Dictionary<string, string> fingerprints)
     {
-        return JsonSerializer.Serialize(new { result = new { fingerprints } });
+        return JsonSerializer.Serialize(new { ok = true, result = new { fingerprints } });
     }
 
     /// <summary>Format run-args as JSON.</summary>
     public static string FormatResponse(string[] args)
     {
-        return JsonSerializer.Serialize(new { result = new { command = args } });
+        return JsonSerializer.Serialize(new { ok = true, result = new { command = args } });
     }
 
     /// <summary>Format ingest results as JSON.</summary>
     public static string FormatResponse(MethodIngestResult results)
     {
-        return JsonSerializer.Serialize(new { result = new
+        return JsonSerializer.Serialize(new { ok = true, result = new
         {
             results = results.Results,
             edges = results.Edges
@@ -477,7 +490,7 @@ public static class TestarudaAdapter
                 return FormatResponse(HandleIngest(trxXml, coberturaXml, sourceRoot));
 
             case "shutdown":
-                return JsonSerializer.Serialize(new { result = new { status = "shutting_down" } });
+                return JsonSerializer.Serialize(new { ok = true, result = new { status = "shutting_down" } });
 
             default:
                 return FormatErrorResponse($"Unknown command: {request.Command}");

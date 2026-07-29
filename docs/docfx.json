@@ -1,0 +1,43 @@
+{
+  "metadata": [
+    {
+      "src": [
+        {
+          "files": ["**/*.cs"],
+          "src": "../src/titi"
+        }
+      ],
+      "dest": "api"
+    }
+  ],
+  "build": {
+    "content": [
+      {
+        "files": ["**/*.md", "**/*.yml"],
+        "exclude": ["_site/**", "specs/**", "specs-toc.yml"]
+      },
+      {
+        "files": ["specs/**/*.md", "specs/**/*.yml"],
+        "src": ".",
+        "dest": "specs"
+      }
+    ],
+    "resource": [
+      {
+        "files": ["**/*.png", "**/*.jpg", "**/*.svg"]
+      }
+    ],
+    "overwrite": [],
+    "dest": "_site",
+    "globalMetadata": {
+      "_appTitle": "titi",
+      "_appFooter": "Copyright © titi contributors",
+      "_enableSearch": true,
+      "_gitContribute": {
+        "repo": "https://github.com/sashakile/titi",
+        "branch": "main"
+      }
+    },
+    "template": ["default", "statictoc"]
+  }
+}

@@ -78,6 +78,15 @@ fmt-check:
 status:
     wai status
 
+# Build and preview documentation site
+# Use `just docs --serve` for local preview
+docs *serve="":
+    cd {{project}} && dotnet tool restore
+    rm -rf docs/specs && mkdir -p docs/specs
+    cp -r openspec/specs/* docs/specs/
+    cp docs/specs-toc.yml docs/specs/toc.yml
+    dotnet docfx docs/docfx.json --output docs/_site {{ if serve != "" { "--serve" } else { "" } }}
+
 # Run the same checks as CI
 ci: restore build-release test dont-check
 

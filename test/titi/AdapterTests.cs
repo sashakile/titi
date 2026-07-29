@@ -16,10 +16,13 @@ public class AdapterTests
         var response = TestarudaAdapter.HandleHandshake();
 
         Assert.Equal("titi", response.Name);
+        Assert.Equal("0.1.0", response.Version);
+        Assert.Equal(1, response.Protocol);
         Assert.Equal(["csharp"], response.Languages);
         Assert.Equal("method", response.Granularity);
-        Assert.True(response.SymbolModelComplete);
-        Assert.False(response.RuntimeEdges);
+        Assert.True(response.Capabilities.SymbolModelComplete);
+        Assert.True(response.Capabilities.Fingerprinting);
+        Assert.False(response.Capabilities.RuntimeEdges);
     }
 
     [Fact]
@@ -32,9 +35,14 @@ public class AdapterTests
         var root = doc.RootElement;
 
         Assert.Equal("titi", root.GetProperty("name").GetString());
+        Assert.Equal("0.1.0", root.GetProperty("version").GetString());
+        Assert.Equal(1, root.GetProperty("protocol").GetInt32());
         Assert.Equal("method", root.GetProperty("granularity").GetString());
-        Assert.True(root.GetProperty("symbol_model_complete").GetBoolean());
-        Assert.False(root.GetProperty("runtime_edges").GetBoolean());
+
+        var caps = root.GetProperty("capabilities");
+        Assert.True(caps.GetProperty("symbol_model_complete").GetBoolean());
+        Assert.True(caps.GetProperty("fingerprinting").GetBoolean());
+        Assert.False(caps.GetProperty("runtime_edges").GetBoolean());
 
         var langs = root.GetProperty("languages").EnumerateArray().Select(e => e.GetString()).ToArray();
         Assert.Contains("csharp", langs);
@@ -521,8 +529,9 @@ public class AdapterTests
         var json = TestarudaAdapter.FormatErrorResponse("something went wrong");
 
         using var doc = JsonDocument.Parse(json);
+        Assert.False(doc.RootElement.GetProperty("ok").GetBoolean());
         Assert.True(doc.RootElement.TryGetProperty("error", out var error));
-        Assert.Equal("something went wrong", error.GetString());
+        Assert.Equal("something went wrong", error.GetProperty("message").GetString());
     }
 
     [Fact]
@@ -622,8 +631,10 @@ public class AdapterTests
         using var handshakeDoc = JsonDocument.Parse(handshakeLine);
         var handshakeResult = handshakeDoc.RootElement.GetProperty("result");
         Assert.Equal("titi", handshakeResult.GetProperty("name").GetString());
+        Assert.Equal("0.1.0", handshakeResult.GetProperty("version").GetString());
+        Assert.Equal(1, handshakeResult.GetProperty("protocol").GetInt32());
         Assert.Equal("method", handshakeResult.GetProperty("granularity").GetString());
-        Assert.True(handshakeResult.GetProperty("symbol_model_complete").GetBoolean());
+        Assert.True(handshakeResult.GetProperty("capabilities").GetProperty("symbol_model_complete").GetBoolean());
 
         // Send discover
         proc.StandardInput.WriteLine("""{"command":"discover","params":{}}""");

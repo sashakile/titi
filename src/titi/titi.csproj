@@ -8,6 +8,10 @@
     <AssemblyName>titi</AssemblyName>
     <RootNamespace>titi</RootNamespace>
     <PublishAot>true</PublishAot>
+    <!-- Enable reflection-based JSON serialization for the testaruda adapter
+         (which uses anonymous types extensively). AOT builds still use
+         source-gen via TitiJsonContext for non-adapter paths. -->
+    <JsonSerializerIsReflectionEnabledByDefault>true</JsonSerializerIsReflectionEnabledByDefault>
   </PropertyGroup>
 
   <ItemGroup>

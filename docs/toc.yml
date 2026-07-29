@@ -1,0 +1,12 @@
+- name: Getting Started
+  href: index.md
+- name: CLI Reference
+  href: cli.md
+- name: Architecture
+  href: architecture.md
+- name: Safety Model
+  href: safety.md
+- name: testaruda Adapter
+  href: adapter.md
+- name: Openspec Specs
+  href: specs/toc.yml
