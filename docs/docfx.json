@@ -3,12 +3,7 @@
     "content": [
       {
         "files": ["**/*.md", "**/*.yml"],
-        "exclude": ["_site/**", "specs/**", "specs-toc.yml"]
-      },
-      {
-        "files": ["specs/**/*.md", "specs/**/*.yml"],
-        "src": ".",
-        "dest": "specs"
+        "exclude": ["_site/**", "specs-toc.yml"]
       }
     ],
     "resource": [
@@ -27,6 +22,6 @@
         "branch": "main"
       }
     },
-    "template": ["default", "statictoc"]
+    "template": ["default"]
   }
 }

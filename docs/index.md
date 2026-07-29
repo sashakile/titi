@@ -59,4 +59,4 @@ just smoke      # Run titi clean → open → affected against the sample-monore
 - [Architecture](architecture.md) — tech stack, project structure, design decisions
 - [Safety Model](safety.md) — test selection safety invariants and confidence scoring
 - [testaruda Adapter](adapter.md) — JSON-over-stdio adapter protocol
-- [Openspec Specs](specs/toc.yml) — formal capability specifications
+- [Openspec Specs](specs/bundles/spec.md) — formal capability specifications
