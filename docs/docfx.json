@@ -3,7 +3,7 @@
     "content": [
       {
         "files": ["**/*.md", "**/*.yml"],
-        "exclude": ["_site/**", "specs-toc.yml"]
+        "exclude": ["_site/**", "specs-toc.yml", "specs/toc.yml"]
       }
     ],
     "resource": [

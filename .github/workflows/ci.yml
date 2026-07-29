@@ -23,9 +23,11 @@ jobs:
         env:
           CI: true
         run: |
-          dotnet restore src/titi/titi.csproj --locked-mode
+          # Source project uses --force-evaluate because PublishAot=true adds
+          # linux-x64 RID packages that differ between environments.
+          dotnet restore src/titi/titi.csproj --force-evaluate
+          # Test project (no AOT) restores with locked mode for determinism.
           dotnet restore test/titi/titi.Tests.csproj --locked-mode
-          dotnet restore test/titi/titi.Tests.csproj
 
       - name: Build
         run: |

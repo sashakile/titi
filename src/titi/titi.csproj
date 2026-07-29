@@ -20,8 +20,6 @@
          (which uses anonymous types extensively). AOT builds still use
          source-gen via TitiJsonContext for non-adapter paths. -->
     <JsonSerializerIsReflectionEnabledByDefault>true</JsonSerializerIsReflectionEnabledByDefault>
-    <!-- Include linux-x64 RID in lock file for AOT publish compatibility -->
-    <RuntimeIdentifiers>linux-x64</RuntimeIdentifiers>
   </PropertyGroup>
 
   <ItemGroup>
