@@ -32,6 +32,31 @@ public static class TitiTestRunner
     }
 
     /// <summary>
+    /// Run an arbitrary dotnet command and return stdout, stderr, and exit code.
+    /// </summary>
+    public static (string Stdout, string Stderr, int ExitCode) RunDotnet(
+        string args, string workingDirectory, int timeoutMs = 60_000)
+    {
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = "dotnet",
+            Arguments = args,
+            WorkingDirectory = workingDirectory,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+        };
+
+        using var proc = Process.Start(startInfo);
+        if (proc == null) return ("", "", -1);
+
+        var stdout = proc.StandardOutput.ReadToEnd();
+        var stderr = proc.StandardError.ReadToEnd();
+        proc.WaitForExit(timeoutMs);
+        return (stdout, stderr, proc.ExitCode);
+    }
+
+    /// <summary>
     /// Run titi with the given arguments and return stdout, stderr, and exit code.
     /// Uses the pre-built binary directly (no dotnet run) to avoid build warnings
     /// polluting stdout.

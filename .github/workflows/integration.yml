@@ -1,0 +1,55 @@
+name: Integration Tests (Synthetic Fixture)
+
+on:
+  schedule:
+    # Nightly: run full integration suite
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+    inputs:
+      filter:
+        description: 'Test filter (default: Category=Integration)'
+        required: false
+        default: 'Category=Integration'
+
+jobs:
+  integration:
+    name: Integrations (${{ github.event.inputs.filter || 'Category=Integration' }})
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Restore dependencies
+        run: |
+          dotnet restore src/titi/titi.csproj --locked-mode
+          dotnet restore test/titi/titi.Tests.csproj --locked-mode
+          dotnet restore test/fixtures/synthetic-monorepo/tests/Orion.UnitTests/Orion.UnitTests.csproj
+
+      - name: Build
+        run: |
+          dotnet build src/titi/titi.csproj --no-restore --configuration Release
+          dotnet build test/titi/titi.Tests.csproj --no-restore --configuration Release
+
+      - name: Restore synthetic fixture NuGet packages
+        run: |
+          dotnet restore test/fixtures/synthetic-monorepo/tests/Orion.UnitTests/Orion.UnitTests.csproj
+
+      - name: Build synthetic fixture
+        run: |
+          dotnet build test/fixtures/synthetic-monorepo/tests/Orion.UnitTests/Orion.UnitTests.csproj --no-restore -v q
+
+      - name: Run integration tests
+        run: |
+          dotnet test test/titi/titi.Tests.csproj --no-build --configuration Release \
+            --filter "${{ github.event.inputs.filter || 'Category=Integration' }}" \
+            --logger "console;verbosity=detailed"
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "::error::Integration tests failed. Check workflow logs for details."

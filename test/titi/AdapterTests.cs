@@ -647,22 +647,20 @@ public class AdapterTests
         }
     }
 
-    // ── Integration tests (skipped by default) ───────────────────
+    // ── Integration tests (slow, require fixture NuGet restore + build) ────
 
-    [Fact(Skip = "Slow (requires NuGet restore + dotnet build, pre-populated test cache); run with: dotnet test --filter Category=Integration")]
+    [Fact]
+    [Trait("Category", "Integration")]
     public void AdapterIntegration_HandshakeAndDiscover_AgainstSyntheticFixture()
     {
         var fixtureDir = Path.GetFullPath(
             Path.Combine(AppContext.BaseDirectory, "../../../../../test/fixtures/synthetic-monorepo"));
 
-        var projectPath = Path.GetFullPath(
-            Path.Combine(AppContext.BaseDirectory, "../../../../../src/titi/titi.csproj"));
-
-        // Start the adapter as a subprocess
+        // Start the adapter using the built binary directly (no dotnet run)
         var psi = new System.Diagnostics.ProcessStartInfo
         {
-            FileName = "dotnet",
-            Arguments = $"run --project \"{projectPath}\" -- testaruda-adapter",
+            FileName = TitiTestRunner.TitiBinaryPath,
+            Arguments = "testaruda-adapter",
             WorkingDirectory = fixtureDir,
             RedirectStandardInput = true,
             RedirectStandardOutput = true,
@@ -712,20 +710,18 @@ public class AdapterTests
         Assert.Equal(0, proc.ExitCode);
     }
 
-    [Fact(Skip = "Slow (requires NuGet restore + dotnet build, pre-populated test cache + edges); run with: dotnet test --filter Category=Integration")]
+    [Fact]
+    [Trait("Category", "Integration")]
     public void AdapterIntegration_StaticDeps_MatchesTestManifest()
     {
         var fixtureDir = Path.GetFullPath(
             Path.Combine(AppContext.BaseDirectory, "../../../../../test/fixtures/synthetic-monorepo"));
 
-        var projectPath = Path.GetFullPath(
-            Path.Combine(AppContext.BaseDirectory, "../../../../../src/titi/titi.csproj"));
-
-        // Start the adapter as a subprocess
+        // Start the adapter using the built binary directly (no dotnet run)
         var psi = new System.Diagnostics.ProcessStartInfo
         {
-            FileName = "dotnet",
-            Arguments = $"run --project \"{projectPath}\" -- testaruda-adapter",
+            FileName = TitiTestRunner.TitiBinaryPath,
+            Arguments = "testaruda-adapter",
             WorkingDirectory = fixtureDir,
             RedirectStandardInput = true,
             RedirectStandardOutput = true,
