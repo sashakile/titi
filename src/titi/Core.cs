@@ -164,7 +164,7 @@ public static class Program
             Console.Error.WriteLine($"Warning: git diff failed: {gitErr}");
             Console.Error.WriteLine("Fallback: all projects will be reported as affected");
         }
-        else if (changedFiles.Length == 0)
+        else if (changedFiles is null || changedFiles.Length == 0)
         {
             Console.Error.WriteLine("No changes detected since last commit.");
         }
