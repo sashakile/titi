@@ -75,7 +75,7 @@ public static class DiscoveryCache
         if (string.IsNullOrEmpty(cacheDir) || string.IsNullOrEmpty(packageId))
             return null;
 
-        var itemDir = Path.Combine(cacheDir, "items", Sanitize(packageId));
+        var itemDir = Path.Combine(cacheDir, "items", CacheKey(packageId));
         var fingerprintPath = Path.Combine(itemDir, "fingerprint");
         var itemsPath = Path.Combine(itemDir, "items.json");
 
@@ -106,7 +106,7 @@ public static class DiscoveryCache
         if (string.IsNullOrEmpty(cacheDir) || string.IsNullOrEmpty(packageId))
             return;
 
-        var itemDir = Path.Combine(cacheDir, "items", Sanitize(packageId));
+        var itemDir = Path.Combine(cacheDir, "items", CacheKey(packageId));
         Directory.CreateDirectory(itemDir);
 
         var fingerprintPath = Path.Combine(itemDir, "fingerprint");
@@ -132,15 +132,22 @@ public static class DiscoveryCache
     }
 
     /// <summary>
-    /// Sanitize a package id for use as a directory name. Package ids
-    /// use dots (e.g. "Orion.UnitTests") which are valid in file paths
-    /// on all target platforms, but we also handle edge cases like
-    /// slashes or null chars.
+    /// Derive a bounded, collision-resistant cache key from a complete UTF-8
+    /// package id. Package ids can contain path separators, <c>..</c> segments,
+    /// or collide after sanitization (e.g. <c>a/b</c> vs <c>a_b</c> on Unix where
+    /// <c>/</c> is the only invalid filename char). A SHA-256 hex digest gives a
+    /// fixed 64-char key with no path separators, so every entry is a real
+    /// descendant of <c>items/</c> and distinct ids never share a directory.
+    /// Legacy sanitized entries are deliberately invalidated by this change
+    /// and rediscovered on first access; no migration is required.
     /// </summary>
-    private static string Sanitize(string s)
+    internal static string CacheKey(string packageId)
     {
-        var invalid = Path.GetInvalidFileNameChars();
-        var sanitized = new string(s.Select(c => invalid.Contains(c) ? '_' : c).ToArray());
-        return string.IsNullOrEmpty(sanitized) ? "_" : sanitized;
+        // Guard against null/empty so the hash input is well-defined. A literal
+        // empty package id is a caller bug (Load/Store already guard), but a
+        // deterministic key keeps the cache layout stable regardless.
+        var bytes = Encoding.UTF8.GetBytes(packageId ?? string.Empty);
+        var hash = SHA256.HashData(bytes);
+        return Convert.ToHexString(hash);
     }
 }
