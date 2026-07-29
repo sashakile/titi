@@ -25,6 +25,6 @@ tests/
   or `titi open` in the fixture directory.
 - Regenerate test-cache edges when test source files change by running
   `titi tests record` in the fixture directory.
-- The fixture's `titi.config.edn` defines tier mappings and project prefix.
+- The fixture's `titi.config.json` defines tier mappings and project prefix.
 - Source files are minimal — they compile and pass basic tests. Add new source
   files to test edge-building when `DG-01` or `DG-04` logic changes.

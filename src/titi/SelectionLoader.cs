@@ -12,13 +12,13 @@ using titi.Serialization;
 public static class SelectionLoader
 {
     /// <summary>
-    /// Load the test→source edge index from <c>.titi/test-cache/edges/edges.edn</c>.
+    /// Load the test→source edge index from <c>.titi/test-cache/edges/edges.json</c>.
     /// The file is JSON (written by TestsRecordCommand/TestsIngestCommand) despite
-    /// the <c>.edn</c> extension. Missing or unparseable file -> empty array.
+    /// the <c>.json</c> extension. Missing or unparseable file -> empty array.
     /// </summary>
     public static TestToSourceEdge[] LoadEdges(string cacheDir)
     {
-        var edgesPath = Path.Combine(cacheDir, "edges", "edges.edn");
+        var edgesPath = Path.Combine(cacheDir, "edges", "edges.json");
         if (!File.Exists(edgesPath))
             return [];
 
@@ -41,18 +41,18 @@ public static class SelectionLoader
     }
 
     /// <summary>
-    /// Load run history from <c>.titi/test-cache/history.edn</c> (EDN).
+    /// Load run history from <c>.titi/test-cache/history.json</c> (EDN).
     /// Missing file -> empty dict (all discovered tests treated as no-history).
     /// </summary>
     public static Dictionary<string, TestRunEntry[]> LoadHistory(string cacheDir)
     {
-        var historyPath = Path.Combine(cacheDir, "history.edn");
+        var historyPath = Path.Combine(cacheDir, "history.json");
         if (!File.Exists(historyPath))
             return [];
         return HistoryStore.ParseEdn(File.ReadAllText(historyPath));
     }
 
-    /// <summary>JSON shape for edges.edn serialization.</summary>
+    /// <summary>JSON shape for edges.json serialization.</summary>
     internal sealed class JsonEdge
     {
         [JsonPropertyName("from")]

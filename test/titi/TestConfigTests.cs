@@ -33,7 +33,7 @@ public class TestConfigTests
 
         // Verify it's embedded in TitiConfig via init
         var config = new TitiConfig(
-            Prefix: "Test.", SourceRoot: "src/", VersionPolicy: VersionPolicy.SemverCompatible,
+            Prefix: "Test.", SourceRoot: ["src/"], VersionPolicy: VersionPolicy.SemverCompatible,
             Cache: new CacheConfig(true, ".titi/", 3600, []),
             TestTiers: new TestTierConfig([], [], [], [], "unit"),
             Ide: new IdeConfig("", [], false),

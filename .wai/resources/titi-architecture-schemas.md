@@ -427,11 +427,11 @@ when launching a Source Mode build.
 **5. Configuration Schemas**
 
 titi uses a layered configuration model: repository-level defaults live
-in titi.config.edn at the repo root, with per-command overrides via CLI
+in titi.config.json at the repo root, with per-command overrides via CLI
 flags. The schema below uses EDN (Extensible Data Notation), the native
 serialization format for Clojure.
 
-**5.1 TitiConfig (titi.config.edn)**
+**5.1 TitiConfig (titi.config.json)**
 
 > interface TitiConfig {
 >
@@ -1079,7 +1079,7 @@ titi at runtime.
 >
 > titi-2026-03-04.log
 >
-> titi.config.edn \# repository configuration
+> titi.config.json \# repository configuration
 >
 > Directory.Build.props \# contains TitiPrefix, TitiSourceRoot
 >

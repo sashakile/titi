@@ -111,7 +111,7 @@ public class SyntheticFixtureTests
 
         Assert.True(proc.ExitCode == 0, $"Exit code {proc.ExitCode}: {stderr}");
 
-        var edgesPath = Path.Combine(titiDir, "test-cache", "edges", "edges.edn");
+        var edgesPath = Path.Combine(titiDir, "test-cache", "edges", "edges.json");
         Assert.True(File.Exists(edgesPath), $"edge index not found at {edgesPath}");
 
         var fingerprintPath = Path.Combine(titiDir, "test-cache", "fingerprint");

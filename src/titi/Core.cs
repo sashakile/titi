@@ -70,13 +70,13 @@ public static class Program
         }
 
         var prefix = config!.Prefix;
-        var sourceRoot = Path.GetFullPath(Path.Combine(repoRoot, config.SourceRoot));
+        var sourceRoots = config.SourceRoot.Select(sr => Path.GetFullPath(Path.Combine(repoRoot, sr))).ToArray();
 
-        Console.Error.WriteLine($"Discovering projects under {sourceRoot}...");
-        var projects = MsBuildSetup.DiscoverProjects(sourceRoot, prefix);
+        Console.Error.WriteLine($"Discovering projects under {string.Join(", ", sourceRoots)}...");
+        var projects = MsBuildSetup.DiscoverProjects(sourceRoots, prefix);
         if (projects.Length == 0)
         {
-            Console.Error.WriteLine($"No projects found matching prefix '{prefix}' under {sourceRoot}");
+            Console.Error.WriteLine($"No projects found matching prefix '{prefix}' under {string.Join(", ", sourceRoots)}");
             return (null, config, 1);
         }
 
@@ -107,7 +107,7 @@ public static class Program
             config!.VersionPolicy,
             includeTransitive: true,
             config.Prefix,
-            Path.GetFullPath(Path.Combine(Environment.CurrentDirectory, config.SourceRoot))
+            Path.GetFullPath(Path.Combine(Environment.CurrentDirectory, config.SourceRoot[0]))
         );
 
         // Generate solution
@@ -317,7 +317,7 @@ public static class Program
         }
 
         // Load prior run history so this ingest appends to it (TD-06).
-        var historyPath = Path.Combine(cacheDir, "history.edn");
+        var historyPath = Path.Combine(cacheDir, "history.json");
         var priorHistory = File.Exists(historyPath)
             ? HistoryStore.ParseEdn(File.ReadAllText(historyPath))
             : new Dictionary<string, Safety.TestRunEntry[]>();
@@ -338,7 +338,7 @@ public static class Program
         // overwrite a prior edge index with an empty array.
         if (coberturaXml != null)
         {
-            var edgesPath = Path.Combine(edgesDir, "edges.edn");
+            var edgesPath = Path.Combine(edgesDir, "edges.json");
             var edgeEntries = ingest.Edges.Select(e => new titi.Serialization.EdgeEntry(
                 From: e.From,
                 To: e.To,
@@ -393,7 +393,7 @@ public static class Program
 
         // Load prior per-project fingerprints and run history (TID-11).
         var priorFingerprints = RecordPlanner.LoadProjectFingerprints(cacheDir);
-        var historyPath = Path.Combine(cacheDir, "history.edn");
+        var historyPath = Path.Combine(cacheDir, "history.json");
         var history = File.Exists(historyPath)
             ? HistoryStore.ParseEdn(File.ReadAllText(historyPath))
             : new Dictionary<string, Safety.TestRunEntry[]>();
@@ -510,7 +510,7 @@ public static class Program
         var currentIds = testProjects.Select(p => titi.RecordPlanner.EdgeFileKey(p.PackageId)).ToHashSet();
         if (Directory.Exists(projectsDir))
         {
-            foreach (var file in Directory.EnumerateFiles(projectsDir, "*.edn"))
+            foreach (var file in Directory.EnumerateFiles(projectsDir, "*.json"))
             {
                 var name = Path.GetFileNameWithoutExtension(file);
                 if (!currentIds.Contains(name))
@@ -520,8 +520,8 @@ public static class Program
             }
         }
 
-        // Write combined edges.edn (the file that SelectionLoader.LoadEdges reads).
-        var edgesPath = Path.Combine(edgesDir, "edges.edn");
+        // Write combined edges.json (the file that SelectionLoader.LoadEdges reads).
+        var edgesPath = Path.Combine(edgesDir, "edges.json");
         var allEdgeEntries = allEdges.Select(e => new titi.Serialization.EdgeEntry(
             From: e.From,
             To: e.To,

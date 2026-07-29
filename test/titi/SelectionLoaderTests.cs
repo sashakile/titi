@@ -12,8 +12,8 @@ public class SelectionLoaderTests
         using var tmp = new TempDir();
         var cacheDir = Path.Combine(tmp.Path, "test-cache");
         Directory.CreateDirectory(Path.Combine(cacheDir, "edges"));
-        var edgesPath = Path.Combine(cacheDir, "edges", "edges.edn");
-        // The edges file is JSON (written by TestsRecordCommand) despite .edn.
+        var edgesPath = Path.Combine(cacheDir, "edges", "edges.json");
+        // The edges file is JSON (written by TestsRecordCommand) despite .json.
         // Use camelCase to match the [JsonPropertyName] attributes on JsonEdge.
         var json = JsonSerializer.Serialize(new object[]
         {
@@ -47,7 +47,7 @@ public class SelectionLoaderTests
         using var tmp = new TempDir();
         var cacheDir = Path.Combine(tmp.Path, "test-cache");
         Directory.CreateDirectory(Path.Combine(cacheDir, "edges"));
-        File.WriteAllText(Path.Combine(cacheDir, "edges", "edges.edn"), "not json");
+        File.WriteAllText(Path.Combine(cacheDir, "edges", "edges.json"), "not json");
 
         Assert.Empty(titi.SelectionLoader.LoadEdges(cacheDir));
     }
@@ -64,7 +64,7 @@ public class SelectionLoaderTests
             new { from = "T", to = "", origin = 0, weight = 1L, lineRanges = Array.Empty<object>() },
             new { from = "T2", to = "/repo/y.cs", origin = 0, weight = 1L, lineRanges = Array.Empty<object>() },
         }, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
-        File.WriteAllText(Path.Combine(cacheDir, "edges", "edges.edn"), json);
+        File.WriteAllText(Path.Combine(cacheDir, "edges", "edges.json"), json);
 
         var edges = titi.SelectionLoader.LoadEdges(cacheDir);
         Assert.Single(edges);
@@ -84,7 +84,7 @@ public class SelectionLoaderTests
                 new titi.Safety.TestRunEntry("Orion.A.M1", TestOutcome.Passed, 3, DateTime.UtcNow),
             },
         };
-        File.WriteAllText(Path.Combine(cacheDir, "history.edn"), titi.HistoryStore.SerializeEdn(history));
+        File.WriteAllText(Path.Combine(cacheDir, "history.json"), titi.HistoryStore.SerializeEdn(history));
 
         var loaded = titi.SelectionLoader.LoadHistory(cacheDir);
 

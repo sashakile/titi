@@ -26,11 +26,15 @@ public static class MsBuildSetup
 
     public static string[] DiscoverProjects(string sourceRoot, string prefix)
     {
-        Initialize();
-        if (!Directory.Exists(sourceRoot))
-            return [];
+        return DiscoverProjects([sourceRoot], prefix);
+    }
 
-        return Directory.EnumerateFiles(sourceRoot, "*.csproj", SearchOption.AllDirectories)
+    public static string[] DiscoverProjects(string[] sourceRoots, string prefix)
+    {
+        Initialize();
+        return sourceRoots
+            .Where(Directory.Exists)
+            .SelectMany(root => Directory.EnumerateFiles(root, "*.csproj", SearchOption.AllDirectories))
             .Where(path =>
             {
                 try

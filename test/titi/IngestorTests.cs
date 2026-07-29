@@ -110,10 +110,10 @@ public class IngestorTests
     [Fact]
     public void IngestRun_EdgesWrittenToCacheDirPath_NotFlatTestCacheRoot()
     {
-        // The edges path must be <cacheDir>/edges/edges.edn (TD-03), not the
-        // flat <cacheDir>/edges.edn the old ingest wrote. Verified at the command
+        // The edges path must be <cacheDir>/edges/edges.json (TD-03), not the
+        // flat <cacheDir>/edges.json the old ingest wrote. Verified at the command
         // level via the path the Ingestor suggests; here we just confirm the
         // canonical relative path constant.
-        Assert.Equal(Path.Combine("test-cache", "edges", "edges.edn"), titi.Ingestor.EdgesRelativePath);
+        Assert.Equal(Path.Combine("test-cache", "edges", "edges.json"), titi.Ingestor.EdgesRelativePath);
     }
 }

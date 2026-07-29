@@ -131,7 +131,7 @@ public static class RecordPlanner
     {
         var invalid = Path.GetInvalidFileNameChars();
         var key = new string(packageId.Select(c => invalid.Contains(c) ? '_' : c).ToArray());
-        return Path.Combine(projectsDir, $"{key}.edn");
+        return Path.Combine(projectsDir, $"{key}.json");
     }
 
     /// <summary>

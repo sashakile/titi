@@ -1,0 +1,5 @@
+{
+  "prefix": "Orion.",
+  "source-root": "./",
+  "version-policy": "semver-compatible"
+}

@@ -86,4 +86,3 @@ public class CoverageHitFilterTests
             "a class with no methods and all zero-hit lines must produce no edge");
     }
 }
-

@@ -2,21 +2,21 @@
 
 ## Purpose
 
-The configuration capability defines how titi reads, validates, and exposes its `titi.config.edn` file, including all sub-sections for cache, test tiers, IDE integration, and CI behaviour.
+The configuration capability defines how titi reads, validates, and exposes its `titi.config.json` file, including all sub-sections for cache, test tiers, IDE integration, and CI behaviour.
 
 ## Requirements
 
 ### Requirement CF-01: Config File Discovery
 
-The system SHALL locate `titi.config.edn` by walking up from the current working directory to the git repository root, using the first file found.
+The system SHALL locate `titi.config.json` by walking up from the current working directory to the git repository root, using the first file found.
 
 #### Scenario: Config found at repo root
-- **GIVEN** `titi.config.edn` exists at the git root
+- **GIVEN** `titi.config.json` exists at the git root
 - **WHEN** any titi command is invoked from a subdirectory
 - **THEN** the config is loaded from the repo root
 
 #### Scenario: No config file found
-- **WHEN** no `titi.config.edn` exists anywhere in the directory ancestry
+- **WHEN** no `titi.config.json` exists anywhere in the directory ancestry
 - **THEN** the system applies built-in defaults (versionPolicy=SEMVER_COMPATIBLE, cache.enabled=true, cache.directory=".titi/") and emits a warn-level diagnostic suggesting the user run `titi init` to create an explicit config file
 
 #### Scenario: Current directory not in a git repository

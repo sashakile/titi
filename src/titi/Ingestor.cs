@@ -22,9 +22,9 @@ public static class Ingestor
 
     /// <summary>
     /// Canonical edge-index path under the titi cache dir (TD-03):
-    /// <c>test-cache/edges/edges.edn</c>.
+    /// <c>test-cache/edges/edges.json</c>.
     /// </summary>
-    public static string EdgesRelativePath => Path.Combine("test-cache", "edges", "edges.edn");
+    public static string EdgesRelativePath => Path.Combine("test-cache", "edges", "edges.json");
 
     /// <summary>
     /// Correlate a TRX run with optional Cobertura coverage into per-test×source

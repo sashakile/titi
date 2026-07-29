@@ -62,7 +62,7 @@ The system SHALL define and document the following error codes with their severi
 
 Additional error codes SHALL NOT be added without a corresponding spec update to this taxonomy.
 
-> **E009 vs E014:** E009 (`CONFIG_INVALID`) is reserved for errors in `titi.config.edn` (missing required fields, invalid values, unsupported `schemaVersion`). E014 (`VERSION_PARSE_INVALID`) is raised when a version string fails to parse into a `SemanticVersion` or `NuGetVersionRange` (see `domain-model` spec, DM-02 and DM-04). The two codes are distinct: a config error is an authoring problem in `titi.config.edn`; a version-parse error is an authoring problem in a `.csproj`/`version.json`/`Directory.Packages.props` value.
+> **E009 vs E014:** E009 (`CONFIG_INVALID`) is reserved for errors in `titi.config.json` (missing required fields, invalid values, unsupported `schemaVersion`). E014 (`VERSION_PARSE_INVALID`) is raised when a version string fails to parse into a `SemanticVersion` or `NuGetVersionRange` (see `domain-model` spec, DM-02 and DM-04). The two codes are distinct: a config error is an authoring problem in `titi.config.json`; a version-parse error is an authoring problem in a `.csproj`/`version.json`/`Directory.Packages.props` value.
 
 #### Scenario: Known error code emitted
 - **WHEN** the graph build fails due to a malformed .csproj
@@ -128,6 +128,6 @@ The system SHALL collect and report all errors encountered during a command rath
 The system SHALL ensure every `TitiError.suggestions` entry is a concrete, executable action (e.g. a specific CLI command to run or a file to edit), not a vague description.
 
 #### Scenario: Suggestion is a runnable command
-- **GIVEN** E009 (CONFIG_INVALID) is raised because `titi.config.edn` is missing
+- **GIVEN** E009 (CONFIG_INVALID) is raised because `titi.config.json` is missing
 - **WHEN** the error is displayed
 - **THEN** suggestions include the exact command `titi init` to create the config file

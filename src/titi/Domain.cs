@@ -121,7 +121,7 @@ public record CiConfig(string[] FullRegressionBranches, int MaxParallelism, stri
 
 public record TitiConfig(
     string Prefix,
-    string SourceRoot,
+    string[] SourceRoot,
     VersionPolicy VersionPolicy,
     CacheConfig Cache,
     TestTierConfig TestTiers,

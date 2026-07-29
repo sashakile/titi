@@ -269,20 +269,20 @@ public class IncrementalRecordTests : IDisposable
         var unchangedPackageIds = new[] { "B" };
 
         // Write for changed project A (uses package-ID key after fix):
-        var writePathA = Path.Combine(projectsDir, $"{titi.RecordPlanner.EdgeFileKey(projA.PackageId)}.edn");
+        var writePathA = Path.Combine(projectsDir, $"{titi.RecordPlanner.EdgeFileKey(projA.PackageId)}.json");
         File.WriteAllText(writePathA, "[]");
 
         // Write for unchanged project B (simulates prior recording):
-        var writePathB = Path.Combine(projectsDir, $"{titi.RecordPlanner.EdgeFileKey(projB.PackageId)}.edn");
+        var writePathB = Path.Combine(projectsDir, $"{titi.RecordPlanner.EdgeFileKey(projB.PackageId)}.json");
         File.WriteAllText(writePathB, "[]");
 
         // Read B's edges (uses package-ID key):
-        var readPathB = Path.Combine(projectsDir, $"{titi.RecordPlanner.EdgeFileKey(projB.PackageId)}.edn");
+        var readPathB = Path.Combine(projectsDir, $"{titi.RecordPlanner.EdgeFileKey(projB.PackageId)}.json");
         Assert.True(File.Exists(readPathB), "B's edge file should exist after fix");
 
-        // Cleanup: only project A's unchanged .edn files survive
+        // Cleanup: only project A's unchanged .json files survive
         var currentIds = new[] { "A", "B" }.Select(id => titi.RecordPlanner.EdgeFileKey(id)).ToHashSet();
-        foreach (var file in Directory.EnumerateFiles(projectsDir, "*.edn"))
+        foreach (var file in Directory.EnumerateFiles(projectsDir, "*.json"))
         {
             var name = Path.GetFileNameWithoutExtension(file);
             Assert.Contains(name, currentIds); // Both files survive

@@ -1,4 +1,4 @@
-// TID-4a: Persist per-test run history to .titi/test-cache/history.edn (TD-06 / 4.6).
+// TID-4a: Persist per-test run history to .titi/test-cache/history.json (TD-06 / 4.6).
 //
 // EDN shape (written and read by this module):
 //   {"<test-id>" [{:test-id "<test-id>" :outcome :passed|:failed|:skipped

@@ -66,7 +66,7 @@ The system SHALL write `globalProperties` from `SolutionSpec` into the generated
 
 ### Requirement SG-05: Idempotent Regeneration
 
-The system SHALL regenerate an existing transient solution file if the dependency closure or swap state has changed since the file was last written, as determined by comparing the current set of `SolutionProjectEntry` paths and a serialized swap fingerprint against those recorded for the prior generation. titi SHALL persist this comparison metadata in a sidecar file at `.titi/solutions/<name>.fingerprint.edn` containing at minimum the solution project-path set, the `SwapResult` fingerprint, and the `globalProperties` fingerprint used to generate the solution. The system SHALL leave the `.slnx` file unchanged if the comparison produces no differences.
+The system SHALL regenerate an existing transient solution file if the dependency closure or swap state has changed since the file was last written, as determined by comparing the current set of `SolutionProjectEntry` paths and a serialized swap fingerprint against those recorded for the prior generation. titi SHALL persist this comparison metadata in a sidecar file at `.titi/solutions/<name>.fingerprint.json` containing at minimum the solution project-path set, the `SwapResult` fingerprint, and the `globalProperties` fingerprint used to generate the solution. The system SHALL leave the `.slnx` file unchanged if the comparison produces no differences.
 
 > **Swap fingerprint definition:** The `SwapResult` fingerprint SHALL be the SHA-256 digest over the sorted set of `SwapResult.swapped` entry IDs concatenated with a canonical serialisation of `SwapResult.msbuildContext` (sorted by property name). The `globalProperties` fingerprint SHALL be the SHA-256 digest over the same `globalProperties` map written into the solution. Both fingerprints SHALL be stable across regenerations given identical inputs (no timestamps, no unordered-map iteration order).
 
@@ -76,7 +76,7 @@ The system SHALL regenerate an existing transient solution file if the dependenc
 - **THEN** the solution file is rewritten to include the new dependency
 
 #### Scenario: No regeneration when unchanged
-- **GIVEN** a transient solution exists, its `.titi/solutions/P.fingerprint.edn` sidecar is present, and no dependencies have changed
+- **GIVEN** a transient solution exists, its `.titi/solutions/P.fingerprint.json` sidecar is present, and no dependencies have changed
 - **WHEN** `titi open P` is run again
 - **THEN** the solution file's modification timestamp is not updated
 
