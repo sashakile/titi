@@ -46,9 +46,9 @@ public class PackValidationTests
             Directory.Delete(DistDir, recursive: true);
         Directory.CreateDirectory(DistDir);
 
-        // Pack
+        // Pack (reset RuntimeIdentifiers to empty so the nupkg is RID-agnostic)
         var (packOut, packErr, packExit) = RunDotnet(
-            $"pack \"{SrcDir}\" --configuration Release -o \"{DistDir}\"",
+            $"pack \"{SrcDir}\" --configuration Release -o \"{DistDir}\" -p:RuntimeIdentifiers=",
             SrcDir, 120_000);
 
         Assert.True(packExit == 0,
