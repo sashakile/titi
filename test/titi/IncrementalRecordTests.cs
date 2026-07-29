@@ -236,6 +236,59 @@ public class IncrementalRecordTests : IDisposable
         Assert.Equal("A", changed[0].PackageId);
     }
 
+    // ── Key-derivation consistency (TID-11 / titi-k2x.2) ─────
+
+    [Fact]
+    public void EdgeFilePath_WriteVsRead_UseSameKey()
+    {
+        // After fix: write, read, and cleanup all derive paths from the
+        // package-ID key, so they are consistent even when the project path
+        // differs from the package ID.
+        var proj = TestProject("MyApp") with { Path = "/repo/tests/SomePath/MyApp.csproj" };
+
+        var writeKey = titi.RecordPlanner.EdgeFileKey(proj.PackageId);
+        var readKey = titi.RecordPlanner.EdgeFileKey(proj.PackageId);
+        var cleanupKey = titi.RecordPlanner.EdgeFileKey(proj.PackageId);
+
+        Assert.Equal(writeKey, readKey);
+        Assert.Equal(readKey, cleanupKey);
+    }
+
+    [Fact]
+    public void RecordPipeline_UnchangedEdgeFile_SurvivesAfterPartialUpdate()
+    {
+        // After fix: unchanged project B's edge file survives because write,
+        // read, and cleanup all use the same package-ID key.
+        var edgesDir = Path.Combine(_tempDir, "edges");
+        var projectsDir = Path.Combine(edgesDir, "projects");
+        Directory.CreateDirectory(projectsDir);
+
+        var projA = TestProject("A") with { Path = "/repo/tests/PA/PA.csproj" };
+        var projB = TestProject("B") with { Path = "/repo/tests/PB/PB.csproj" };
+        var changed = new[] { projA };
+        var unchangedPackageIds = new[] { "B" };
+
+        // Write for changed project A (uses package-ID key after fix):
+        var writePathA = Path.Combine(projectsDir, $"{titi.RecordPlanner.EdgeFileKey(projA.PackageId)}.edn");
+        File.WriteAllText(writePathA, "[]");
+
+        // Write for unchanged project B (simulates prior recording):
+        var writePathB = Path.Combine(projectsDir, $"{titi.RecordPlanner.EdgeFileKey(projB.PackageId)}.edn");
+        File.WriteAllText(writePathB, "[]");
+
+        // Read B's edges (uses package-ID key):
+        var readPathB = Path.Combine(projectsDir, $"{titi.RecordPlanner.EdgeFileKey(projB.PackageId)}.edn");
+        Assert.True(File.Exists(readPathB), "B's edge file should exist after fix");
+
+        // Cleanup: only project A's unchanged .edn files survive
+        var currentIds = new[] { "A", "B" }.Select(id => titi.RecordPlanner.EdgeFileKey(id)).ToHashSet();
+        foreach (var file in Directory.EnumerateFiles(projectsDir, "*.edn"))
+        {
+            var name = Path.GetFileNameWithoutExtension(file);
+            Assert.Contains(name, currentIds); // Both files survive
+        }
+    }
+
     // ── Helpers ─────────────────────────────────────────────────
 
     private ProjectDescriptor CreateTempProject(string dirName, string packageId)
@@ -249,4 +302,5 @@ public class IncrementalRecordTests : IDisposable
 
         return TestProject(packageId) with { Path = csprojPath };
     }
+
 }

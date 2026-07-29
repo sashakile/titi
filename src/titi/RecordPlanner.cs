@@ -15,7 +15,7 @@ using System.Text;
 using System.Text.Json;
 using titi.Serialization;
 
-public record TestRunPlan(string ProjectPath, string ResultsDir, string Arguments);
+public record TestRunPlan(string ProjectPath, string PackageId, string ResultsDir, string Arguments);
 
 public static class RecordPlanner
 {
@@ -37,7 +37,7 @@ public static class RecordPlanner
         {
             var resultsDir = Path.Combine(resultsRoot, Guid.NewGuid().ToString("N"));
             var args = $"test \"{p.Path}\" --collect \"XPlat Code Coverage\" --logger trx --results-directory \"{resultsDir}\"";
-            plans.Add(new TestRunPlan(p.Path, resultsDir, args));
+            plans.Add(new TestRunPlan(p.Path, p.PackageId, resultsDir, args));
         }
         return plans.ToArray();
     }
@@ -121,6 +121,26 @@ public static class RecordPlanner
                 pruned[kv.Key] = kv.Value;
         }
         return pruned;
+    }
+
+    /// <summary>
+    /// Derive the per-project edge file path from a stable package-ID key.
+    /// Used by write, read, and cleanup paths so they stay consistent.
+    /// </summary>
+    public static string EdgeFilePath(string projectsDir, string packageId)
+    {
+        var invalid = Path.GetInvalidFileNameChars();
+        var key = new string(packageId.Select(c => invalid.Contains(c) ? '_' : c).ToArray());
+        return Path.Combine(projectsDir, $"{key}.edn");
+    }
+
+    /// <summary>
+    /// Derive the stable filename key for a package ID.
+    /// </summary>
+    public static string EdgeFileKey(string packageId)
+    {
+        var invalid = Path.GetInvalidFileNameChars();
+        return new string(packageId.Select(c => invalid.Contains(c) ? '_' : c).ToArray());
     }
 
     // ── Helpers ───────────────────────────────────────────────────

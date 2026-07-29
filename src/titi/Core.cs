@@ -449,7 +449,7 @@ public static class Program
                     allEdges.AddRange(projectEdges);
 
                     // Write per-project edge file for future incremental runs.
-                    var projEdgePath = Path.Combine(projectsDir, $"{SanitizeForPath(plan.ProjectPath)}.edn");
+                    var projEdgePath = titi.RecordPlanner.EdgeFilePath(projectsDir, plan.PackageId);
                     var projEdgeEntries = projectEdges.Select(e => new titi.Serialization.EdgeEntry(
                         From: e.From,
                         To: e.To,
@@ -475,7 +475,7 @@ public static class Program
             Console.Error.WriteLine($"Preserving edges for {unchangedPackageIds.Count} unchanged project(s)...");
             foreach (var packageId in unchangedPackageIds)
             {
-                var projEdgePath = Path.Combine(projectsDir, $"{SanitizeForPath(packageId)}.edn");
+                var projEdgePath = titi.RecordPlanner.EdgeFilePath(projectsDir, packageId);
                 if (File.Exists(projEdgePath))
                 {
                     try
@@ -499,7 +499,7 @@ public static class Program
         }
 
         // Clean up per-project files for projects no longer in the graph.
-        var currentIds = testProjects.Select(p => SanitizeForPath(p.PackageId)).ToHashSet();
+        var currentIds = testProjects.Select(p => titi.RecordPlanner.EdgeFileKey(p.PackageId)).ToHashSet();
         if (Directory.Exists(projectsDir))
         {
             foreach (var file in Directory.EnumerateFiles(projectsDir, "*.edn"))
