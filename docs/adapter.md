@@ -4,6 +4,8 @@ title: testaruda Adapter
 
 # testaruda Adapter
 
+**TL;DR:** titi ships a JSON-over-stdio adapter for [testaruda](https://github.com/charly-vibes/testaruda) integration. It builds the `MonorepoGraph` once at startup and answers handshake/discover/static-deps/fingerprint/run-args/ingest/shutdown commands from in-memory state.
+
 titi ships a built-in testaruda adapter subcommand (`titi testaruda-adapter`)
 that speaks the testaruda JSON-over-stdio adapter protocol. This allows
 [testaruda](https://github.com/charly-vibes/testaruda) to use titi's
@@ -26,10 +28,10 @@ object.
 
 ```
 → {"command":"discover","params":{}}
-← {"result":[{"node_id":"LibTest.MyTests.Test1","suite_kind":"LibTest.MyTests.Test1","file":"/asm/LibTest.dll"}]}
+← {"result":[{"node_id":"LibTest.MyTests.Test1","suite_kind":"LibTest.MyTests","file":"/asm/LibTest.dll"}]}
 ```
 
-The response uses the canonical testaruda adapter protocol format: `result` is a direct array of items with `node_id`, `suite_kind`, and `file` fields. `suite_kind` is the fully-qualified `ClassName.MethodName` (per the testaruda adapter protocol).
+The response uses the canonical testaruda adapter protocol format: `result` is a direct array of items with `node_id`, `suite_kind`, and `file` fields. `node_id` is the unique test identifier; `suite_kind` is the test class name (per the testaruda adapter protocol).
 
 ### Commands
 
@@ -54,8 +56,10 @@ provides a complete static symbol model but does not trace runtime call edges.
 
 - **Process lifetime**: The adapter is a long-lived process for the duration of
   one testaruda invocation. It builds the `MonorepoGraph` once during handshake
-  (in-memory) and answers all commands from that in-memory state. There is no
-  persistent graph cache file.
+  (in-memory) and answers all commands from that in-memory state. It holds a
+  read-only reference to `.titi/graph.cache` and never acquires the writer lock
+  at query time. Run `titi cache warm` before invoking testaruda to avoid
+  writer contention.
 - **Framework detection**: The adapter reports `xunit` as the framework for all
   test projects at the project level. NUnit/MSTest projects are normalized to
   `xunit` in the handshake; method-level framework detection uses the VSTest
@@ -67,7 +71,7 @@ provides a complete static symbol model but does not trace runtime call edges.
 ## Configuration
 
 The adapter requires no additional titi configuration — it reuses the existing
-`titi.config.edn` and builds the project graph from source at startup. The
+`titi.config.json` and builds the project graph from source at startup. The
 testaruda-side config defaults (`.csproj`/`.sln`/`.slnx` →
 `titi testaruda-adapter` mapping, dotnet-project detection) are in the
 testaruda repository (v0.2.5+).

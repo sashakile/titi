@@ -4,7 +4,9 @@ title: Safety Model
 
 # Safety Model
 
-Test selection uses a multi-factor safety model to minimize the risk of missed
+**TL;DR:** titi's test-impact analysis uses a multi-factor safety model with an always-run set (failed/new/no-history tests), confidence scoring (resolution + freshness + depth), and fallback to project-level when confidence drops below threshold.
+
+titi's test selection uses a multi-factor safety model to minimize the risk of missed
 regressions while maximizing test execution savings.
 
 ## Always-Run Set
@@ -36,7 +38,7 @@ defaults to `1.0` (no diff → no risk of missing a regression).
 When confidence drops below the configured threshold (default `0.7`), selection
 falls back to project-level granularity (all tests in affected projects).
 
-The threshold is configurable in `titi.config.edn` under
+The threshold is configurable in `titi.config.json` under
 `test-detection.fallback-threshold` (default `0.7`). A stricter value (e.g.
 `0.85`) is recommended for release branches.
 

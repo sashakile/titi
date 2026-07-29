@@ -22,24 +22,19 @@ edges, selection, safety model) are built.
 **Remaining work:** cascading version bumps (ApiCompat-based), production
 hardening.
 
-## Purpose
-
-titi resolves the tension between treating internal modules as independent
-NuGet packages (binary mode) vs. local project references (source mode).
-
 ## Core Capabilities
 
-| Capability | Status | Description |
-|------------|--------|-------------|
-| **Reference swapping** | ✅ `titi open` | Toggle `PackageReference` ↔ `ProjectReference` via MSBuild conditional logic |
-| **Dynamic solution generation** | ✅ `.slnx` output | Transient `.slnx` files for a specific project's dependency closure |
-| **Test Impact Analysis (project-level)** | ✅ `titi affected` | Compute affected set from git diff + dependency graph |
-| **Test-item detection** | ✅ `titi tests list` | Enumerate test methods via VSTest `--list-tests` |
-| **Coverage-to-edge mapping** | ✅ `titi tests ingest` | Cobertura XML → test-to-source dependency edges |
-| **Test selection** | ✅ `titi affected` output | Always-run set, confidence scoring, fallback logic |
-| **testaruda adapter** | ✅ `titi testaruda-adapter` | JSON-over-stdio adapter for testaruda integration |
-| **Interactive REPL** | ✅ `titi repl` | Explore the dependency graph interactively |
-| **Cascading version bumps** | 🔄 Planned | ApiCompat-based version increment detection |
+| Capability | Command | Status | Description |
+|------------|---------|--------|-------------|
+| **Reference swapping** | `titi open` | ✅ Implemented | Toggle `PackageReference` ↔ `ProjectReference` via MSBuild conditional logic |
+| **Dynamic solution generation** | `.slnx` output | ✅ Implemented | Transient `.slnx` files for a specific project's dependency closure |
+| **Test Impact Analysis** | `titi affected` | ✅ Implemented | Compute affected set from git diff + dependency graph |
+| **Test-item detection** | `titi tests list` | ✅ Implemented | Enumerate test methods via VSTest `--list-tests` |
+| **Coverage-to-edge mapping** | `titi tests ingest` | ✅ Implemented | Cobertura XML → test-to-source dependency edges |
+| **Test selection** | `titi affected` output | ✅ Implemented | Always-run set, confidence scoring, fallback logic |
+| **testaruda adapter** | `titi testaruda-adapter` | ✅ Implemented | JSON-over-stdio adapter for testaruda integration |
+| **Interactive REPL** | `titi repl` | ✅ Implemented | Explore the dependency graph interactively |
+| **Cascading version bumps** | — | 🔄 Planned | ApiCompat-based version increment detection |
 
 ## Getting Started
 

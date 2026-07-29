@@ -25,6 +25,9 @@ target/
 # titi artifacts
 .titi/
 
+# Build output
+docs/_site/
+
 # OS
 .DS_Store
 Thumbs.db

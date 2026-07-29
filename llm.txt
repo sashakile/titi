@@ -2,9 +2,11 @@
 
 > Small CLI tool for managing C# monorepos.
 
+**TL;DR:** titi manages .NET monorepo reference modes (PackageReference ↔ ProjectReference), generates transient solutions, and computes test-impact analysis from git diff + coverage data.
+
 ## What it does
 
-titi is a ClojureCLR-based command-line tool that provides an orchestration
+titi is a C# 13 / .NET 10 command-line tool that provides an orchestration
 layer for .NET monorepos. It manages the tension between treating a module as
 an independent NuGet package vs. a local project reference.
 
@@ -16,19 +18,10 @@ an independent NuGet package vs. a local project reference.
   of the entire monorepo and identify affected projects
 - **Dynamic solution generation** — creates transient `.slnx` files scoped to
   a target project and its transitive source-dependencies
-- **Versioning** — cascading version bump detection gated on API surface
-  changes; integrates with Nerdbank.GitVersioning
-- **Central Package Management** — enforces CPM via `Directory.Packages.props`
-  with transitive pinning and lock-file regeneration
-- **Bundle management** — metapackage scaffolding, drift detection, lint rules
-- **Test Impact Analysis** — generates `Microsoft.Build.Traversal` projects for
-  only the tests affected by a change set
-
-## Implementation
-
-Written in ClojureCLR (targeting ClojureCLR.Next). Uses .NET interop to call
-MSBuild, SolutionPersistence, and ApiCompat APIs directly. Distributed as an
-AOT-compiled executable.
+- **Test Impact Analysis** — project-level and method-level test selection from
+  git diff + Cobertura coverage edges, with multi-factor confidence scoring
+- **testaruda adapter** — built-in JSON-over-stdio adapter protocol for
+  testaruda integration
 
 ## Key design decisions
 
@@ -41,27 +34,35 @@ AOT-compiled executable.
 - Lock files (`packages.lock.json`) are required and enforced in CI via
   `RestoreLockedMode`
 
-## Project structure (planned)
+## Project structure
 
 ```
-src/
-  titi/
-    core.clj          — entry point, CLI dispatch
-    graph.clj         — ProjectGraph analysis
-    swap.clj          — PackageReference ↔ ProjectReference logic
-    solution.clj      — .slnx generation via SolutionPersistence
-    version.clj       — cascading version bump detection
-    bundle.clj        — metapackage management
-    ci.clj            — Traversal project generation
+src/titi/
+├── Adapter.cs           — testaruda adapter protocol
+├── Affected.cs          — Impact analysis (git diff → affected projects)
+├── Core.cs              — Entry point + command dispatch
+├── Domain.cs            — Core domain model (records, enums)
+├── Graph.cs             — MonorepoGraph construction
+├── Config.cs            — titi.config.edn loading + defaults
+├── Swap.cs              — Reference swapping (PackageRef ↔ ProjectRef)
+├── Solution.cs          — .slnx solution generation
+├── TestDiscovery.cs     — `dotnet test --list-tests` parsing
+├── Coverage.cs          — TRX + Cobertura XML parsing
+├── Safety.cs            — Selection safety (always-run, confidence)
+├── Repl.cs              — Interactive dependency graph REPL
+├── Serialization/       — AOT-safe JSON (TitiJsonContext + DTOs)
+│   └── TitiJsonContext.cs
+└── titi.csproj          — Project file
 test/
-  titi/
-    graph_test.clj
-    swap_test.clj
+└── titi/
+    ├── AffectedTests.cs
+    └── ...
 ```
 
 ## See also
 
-- Research plan: `.wai/projects/tracer-bullet/research/` (architectural analysis and versioning research)
-- Design decisions: `.wai/projects/tracer-bullet/design/` (tracer-bullet architecture decisions)
-- Implementation plan: `.wai/projects/tracer-bullet/plan/` (phased implementation plan)
-- Specifications: `openspec/specs/` (10 capability specs)
+- CLI reference: `docs/cli.md`
+- Architecture: `docs/architecture.md`
+- Safety model: `docs/safety.md`
+- Adapter protocol: `docs/adapter.md`
+- Specifications: `openspec/specs/`

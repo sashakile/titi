@@ -4,6 +4,10 @@ title: CLI Reference
 
 # CLI Reference
 
+**TL;DR:** This is the full command reference for [titi](index.md), a .NET monorepo orchestration CLI. For each command you'll find flags, examples, and exit codes.
+
+This page covers all titi commands. For the big picture, see the [architecture overview](architecture.md).
+
 ## Usage
 
 ```
@@ -85,13 +89,14 @@ $ titi tests list tests/Orion.UnitTests/Orion.UnitTests.csproj
 ## `titi tests ingest <trx> [--coverage <cobertura>]`
 
 Parse TRX test results and Cobertura coverage XML, building `TestToSourceEdge` records
-and caching them in `.titi/test-cache/edges/edges.edn`.
+and caching them in `.titi/test-cache/edges/edges.edn` on successful completion.
 
 **Flags:**
 - `--coverage <path>` — Path to Cobertura coverage XML (enables edge building)
 
 **Error handling:** If the TRX file is unparseable, titi exits `1` and **leaves the
 existing edge index untouched** — a malformed ingest never overwrites prior good data.
+The cache is only written when parsing succeeds.
 
 ---
 

@@ -2,7 +2,9 @@
 title: Architecture
 ---
 
-# Architecture
+# titi Architecture
+
+**TL;DR:** titi is a C# 13 / .NET 10 CLI with functional-core / imperative-shell architecture. It uses MSBuild's project graph for dependency analysis and generates transient `.slnx` solutions with conditional reference swapping.
 
 ## Overview
 
@@ -22,30 +24,41 @@ It resolves the tension between treating internal modules as independent NuGet p
 
 ```
 src/titi/
-├── Adapter.cs          # testaruda adapter protocol
-├── Affected.cs         # Impact analysis (git diff → affected projects)
-├── ArtifactLocator.cs  # Find TRX/Cobertura in test results dir
-├── Config.cs           # titi.config.edn loading + defaults
+# --- Core & Dispatch ---
 ├── Core.cs             # Entry point + command dispatch
-├── Coverage.cs         # TRX + Cobertura XML parsing
-├── DiscoveryCache.cs   # Test-item caching (fingerprint-keyed)
 ├── Domain.cs           # Core domain model (records, enums)
-├── EdgeBuilder.cs      # Build test→source edges from runs
-├── Graph.cs            # MonorepoGraph construction
-├── HistoryStore.cs     # Run history persistence (EDN format)
-├── Ingestor.cs         # Test result ingestion + correlation
+├── Config.cs           # titi.config.edn loading + defaults
 ├── Interop.cs          # MSBuild interop (locator + graph eval)
-├── RecordPlanner.cs    # Test-run planning + incremental fingerprints
+
+# --- Dependency Graph ---
+├── Graph.cs            # MonorepoGraph construction
 ├── Repl.cs             # Interactive dependency graph REPL
+
+# --- Reference Management ---
+├── Swap.cs             # Reference swapping (PackageRef ↔ ProjectRef)
+├── Solution.cs         # .slnx solution generation
+├── Affected.cs         # Impact analysis (git diff → affected projects)
+
+# --- Test Discovery & Coverage ---
+├── TestDiscovery.cs    # `dotnet test --list-tests` parsing
+├── Coverage.cs         # TRX + Cobertura XML parsing
+├── EdgeBuilder.cs      # Build test→source edges from runs
+├── DiscoveryCache.cs   # Test-item caching (fingerprint-keyed)
+
+# --- Safety, Selection & Ingestion ---
 ├── Safety.cs           # Selection safety (always-run, confidence)
 ├── SelectionLoader.cs  # Edge/history loading from cache
+├── Ingestor.cs         # Test result ingestion + correlation
+├── HistoryStore.cs     # Run history persistence (EDN format)
+├── ArtifactLocator.cs  # Find TRX/Cobertura in test results dir
+├── RecordPlanner.cs    # Test-run planning + incremental fingerprints
+
+# --- Output & Protocol ---
+├── Adapter.cs          # testaruda adapter protocol
+├── TestCli.cs          # CLI output formatters
+├── TestManifest.cs     # Traversal .proj + filter generation
 ├── Serialization/      # AOT-safe JSON (TitiJsonContext + DTOs)
 │   └── TitiJsonContext.cs
-├── Solution.cs         # .slnx solution generation
-├── Swap.cs             # Reference swapping (PackageRef ↔ ProjectRef)
-├── TestCli.cs          # CLI output formatters
-├── TestDiscovery.cs    # `dotnet test --list-tests` parsing
-├── TestManifest.cs     # Traversal .proj + filter generation
 └── titi.csproj         # Project file
 ```
 

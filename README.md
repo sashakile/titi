@@ -6,9 +6,9 @@ Small Mono Repo tool for C# Projects.
 
 ## Status: Tracer Bullet Complete
 
-The tracer bullet (`titi open <package-id>`) is implemented and working. 58 tests pass.
-Core test-impact-analysis primitives (test-item detection, edges, selection) are built.
-Next: testaruda adapter integration and production hardening.
+The tracer bullet (`titi open <package-id>`) and testaruda adapter (Phase 1 + Phase 2) are implemented. 219+ tests pass.
+Core test-impact-analysis primitives (test-item detection, edges, selection, safety model) are built.
+Next: cascading version bumps and production hardening.
 
 ## Purpose
 
@@ -27,6 +27,7 @@ references (source mode).
 | **Coverage-to-edge mapping** | ✅ `titi tests ingest` | Cobertura XML → test-to-source dependency edges |
 | **Test selection** | ✅ `titi affected` output | Always-run set, confidence scoring, fallback logic |
 | **Cascading version bumps** | 🔄 Planned | ApiCompat-based version increment detection |
+| **testaruda adapter** | ✅ `titi testaruda-adapter` | JSON-over-stdio adapter for testaruda integration |
 
 ## CLI Reference
 
@@ -64,86 +65,22 @@ includes per-test selection results and confidence score.
 
 ## Safety Model
 
-Test selection uses a multi-factor safety model:
-
-1. **Always-run set**: tests that failed last run, are newly added, or have no
-   history are always selected regardless of coverage edges.
-2. **Confidence scoring**: weighted combination of changed-file resolution ratio
-   (60%), edge freshness (25%), and history depth (15%).
-3. **Fallback**: when confidence drops below the threshold (default 0.7),
-   selection falls back to project-level (all tests in affected projects).
-4. **Missed-selection incidents**: when a test is missed by selection but should
-   have been selected, the incident is recorded and can promote the edge weight.
+See [Safety Model](docs/safety.md) for the full reference — always-run set, confidence scoring formula, fallback thresholds, and missed-selection incident handling.
 
 ## Relation to testaruda
 
-titi's test-item detection primitives (TID-1 through TID-8) are independent of
-the testaruda adapter. The adapter's **Phase 1** runs at project granularity
-using titi's existing `MonorepoGraph` and `AffectedSet`. **Phase 2** (deferred)
-will consume these test-item primitives for method-level granularity.
-
-This separation means:
-- `add-test-item-detection` is a prerequisite for adapter Phase 2, not a replacement
-- The adapter can ship at project granularity while test-item features mature
-- Both changes are compatible and additive
+See [testaruda Adapter](docs/adapter.md) for the adapter protocol, granularity model, and known limitations.
 
 ## testaruda Adapter
 
 titi ships a built-in testaruda adapter subcommand (`titi testaruda-adapter`)
-that speaks the testaruda JSON-over-stdio adapter protocol. This allows
-[testaruda](https://github.com/charly-vibes/testaruda) to use titi's
-MSBuild-accurate project graph as its C#/.NET static-dependency source.
+that speaks the [testaruda](https://github.com/charly-vibes/testaruda) JSON-over-stdio
+adapter protocol. See [full adapter documentation](docs/adapter.md) for the
+protocol commands, granularity model, and known limitations.
 
-### Protocol
+### Cold-Start Benchmark
 
-The adapter reads one JSON request per line from stdin and writes one JSON
-response per line to stdout. Each request has a `command` field and `params`
-object:
-
-| Command | Description | Params |
-|---------|-------------|--------|
-| `handshake` | Capability advertisement | `{}` |
-| `discover` | Enumerate test projects | `{}` |
-| `static-deps` | Compute affected test items | `changed_files`, `affected_projects` |
-| `fingerprint` | Return project fingerprints | `{}` |
-| `run-args` | Generate test command | `test_ids` |
-| `ingest` | Parse TRX results | `trx_path` |
-| `shutdown` | Graceful shutdown | `{}` |
-
-### Phase 1: Project-level granularity
-
-Phase 1 operates at project granularity: each test item is a whole test
-assembly. `symbol_model_complete` and `runtime_edges` are both `false`.
-Benefits are composability, caching, and confidence scoring — not raw
-test-count reduction.
-
-### Known Limitations
-
-- **Process lifetime**: The adapter is a long-lived process for the duration of
-  one testaruda invocation. It builds the `MonorepoGraph` once during handshake
-  and answers all commands from in-memory state. Per-command spawning would be
-  unusably slow on large monorepos (30s cold-graph-build budget per DG-08).
-- **Lock interaction**: The adapter holds a read-only reference to the graph
-  cache. It never acquires the writer lock on `.titi/graph.cache` at query time.
-  Run `titi cache warm` before invoking testaruda to avoid contention.
-- **F#/VB.NET**: MSBuild project-graph evaluation is language-neutral, so F#
-  and VB.NET projects may work without changes. This is untested — verify
-  against a real mixed-language fixture before claiming support.
-- **Framework detection**: Phase 1 hardcodes `xunit` as the default framework
-  for all test projects. NUnit/MSTest projects are treated as xUnit at the
-  project level. Method-level framework detection is deferred to Phase 2.
-- **CLR cold-start**: The .NET CLR process startup time is a distinct cost
-  from the graph-build budget. Set the minimum adapter timeout in testaruda's
-  config to at least 30s to account for cold-start + graph build on large repos.
-
-### Minimum Adapter Timeout
-
-The CLR process cold-start + graph-build budget for a 1000-project repo is
-approximately 30 seconds (DG-08). Set the minimum adapter timeout in
-testaruda's configuration (`testaruda.toml`) to at least 30s for small repos
-and 60s for large repos.
-
-**Benchmark results** (CLR cold-start, `--help` only, 5 samples):
+CLR process cold-start (`--help` only, 5 samples):
 
 | Mode   | Mean  | StdDev | Min  | Max  | mean+2σ |
 |--------|-------|--------|------|------|---------|
@@ -151,21 +88,13 @@ and 60s for large repos.
 | AOT    | N/A   | N/A    | N/A  | N/A  | N/A     |
 
 > AOT is not currently viable: `System.Text.Json` uses reflection-heavy
-> anonymous-type serialization throughout the codebase (adapter, CLI,
-> cache), causing linker errors and IL3050 warnings when `PublishAot=true`.
-> AOT would require source-generated `JsonSerializerContext` across ~6
-+files — tracked as future work.
+> serialization throughout the codebase (adapter, CLI, cache), causing linker
+> errors and IL3050 warnings when `PublishAot=true`. Tracked as future work.
 
 All measured cold-starts are well under the 30s testaruda default timeout.
 Budget the adapter timeout for **graph-build time**, not CLR cold-start.
-Re-run with `just benchmark-adapter-coldstart` to reproduce on your system.
-
-### Configuration
-
-The adapter requires no additional titi configuration — it reuses the existing
-`titi.config.edn` and `.titi/graph.cache`. The testaruda-side config defaults
-(`.csproj`/`.sln`/`.slnx` → `titi testaruda-adapter` mapping, dotnet-project
-detection) are in the testaruda repository (v0.2.5+).
+Set `testaruda.toml` minimum adapter timeout to 30s (small repos) or 60s (large repos).
+Re-run with `just benchmark-adapter-coldstart` to reproduce.
 
 ## Implementation Language
 
@@ -196,7 +125,7 @@ See Decision 10 in `.wai/projects/tracer-bullet/designs/`.
 
 ```bash
 just build      # Build the CLI
-just test       # Run 58 tests
+just test       # Run 219+ tests (excludes slow synthetic-fixture builds)
 just smoke      # Run end-to-end smoke test
 just titi-open  # Run titi open against sample-monorepo fixture
 ```
