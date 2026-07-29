@@ -17,18 +17,28 @@ Certain tests are always selected regardless of coverage edges:
 
 ## Confidence Scoring
 
-When test-to-source edges are available, confidence is a weighted combination:
+When test-to-source edges are available, confidence is a weighted combination
+of three factors:
 
-| Factor | Weight | Description |
-|--------|--------|-------------|
-| Changed-file resolution | 60% | Ratio of changed files mapped to affected projects |
-| Edge freshness | 25% | How recently the coverage edges were recorded |
-| History depth | 15% | How many prior runs inform the selection |
+| Factor | Weight | Formula |
+|--------|--------|---------|
+| Changed-file resolution | 60% | `resolvedFiles / changedFiles` — ratio of changed files mapped to affected projects |
+| Edge freshness | 25% | `min(1.0, edgeFreshness)` — 1.0 if edges from current run, decaying toward 0 |
+| History depth | 15% | `min(1.0, historyDepth / 10.0)` — saturates at 10 prior runs per test |
+
+**Combined:** `confidence = resolution × 0.6 + freshness × 0.25 + depth × 0.15`
+
+When there are no changed files (`changedFiles.Length == 0`), confidence
+defaults to `1.0` (no diff → no risk of missing a regression).
 
 ## Fallback
 
 When confidence drops below the configured threshold (default `0.7`), selection
 falls back to project-level granularity (all tests in affected projects).
+
+The threshold is configurable in `titi.config.edn` under
+`test-detection.fallback-threshold` (default `0.7`). A stricter value (e.g.
+`0.85`) is recommended for release branches.
 
 ## Exit Codes
 
@@ -43,4 +53,6 @@ The `test-manifest --select --list` command uses exit codes to signal safety:
 ## Missed-Selection Incidents
 
 When a test is missed by selection but should have been selected, the incident
-is recorded and can promote the edge weight for future selections.
+is recorded (`Safety.RecordMissedSelection`) and can promote the edge weight
+for future selections — the system learns from regressions to improve future
+selection accuracy.

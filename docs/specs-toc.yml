@@ -1,23 +1,23 @@
 items:
-  - name: bundles
+  - name: Bundles
     href: bundles/spec.md
-  - name: cli
+  - name: CLI
     href: cli/spec.md
-  - name: configuration
+  - name: Configuration
     href: configuration/spec.md
-  - name: dependency-graph
+  - name: Dependency Graph
     href: dependency-graph/spec.md
-  - name: diagnostics
+  - name: Diagnostics
     href: diagnostics/spec.md
-  - name: domain-model
+  - name: Domain Model
     href: domain-model/spec.md
-  - name: graph-cache
+  - name: Graph Cache
     href: graph-cache/spec.md
-  - name: msbuild-integration
+  - name: MSBuild Integration
     href: msbuild-integration/spec.md
-  - name: reference-swap
+  - name: Reference Swap
     href: reference-swap/spec.md
-  - name: solution-generation
+  - name: Solution Generation
     href: solution-generation/spec.md
-  - name: versioning
+  - name: Versioning
     href: versioning/spec.md

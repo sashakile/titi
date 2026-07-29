@@ -23,24 +23,29 @@ It resolves the tension between treating internal modules as independent NuGet p
 ```
 src/titi/
 ├── Adapter.cs          # testaruda adapter protocol
-├── Affected.cs         # Impact analysis
-├── Cli.cs              # CLI argument parsing
-├── Config.cs           # Configuration loading
-├── Core.cs             # Entry point and command dispatch
-├── Coverage.cs         # TRX + Cobertura parsing
-├── DiscoveryCache.cs   # Test-item caching
-├── Domain.cs           # Core domain model
-├── Graph.cs            # Dependency graph
-├── HistoryStore.cs     # Run history persistence
-├── Ingestor.cs         # Test result ingestion
-├── Repl.cs             # Interactive REPL
-├── Safety.cs           # Safety invariants
-├── SelectionLoader.cs  # Edge/history loading
-├── Serialization/      # AOT-safe JSON serialization
-├── Solution.cs         # Solution generation
-├── Swap.cs             # Reference swapping
-├── TestCli.cs          # CLI formatters
-├── TestManifest.cs     # Test manifest generation
+├── Affected.cs         # Impact analysis (git diff → affected projects)
+├── ArtifactLocator.cs  # Find TRX/Cobertura in test results dir
+├── Config.cs           # titi.config.edn loading + defaults
+├── Core.cs             # Entry point + command dispatch
+├── Coverage.cs         # TRX + Cobertura XML parsing
+├── DiscoveryCache.cs   # Test-item caching (fingerprint-keyed)
+├── Domain.cs           # Core domain model (records, enums)
+├── EdgeBuilder.cs      # Build test→source edges from runs
+├── Graph.cs            # MonorepoGraph construction
+├── HistoryStore.cs     # Run history persistence (EDN format)
+├── Ingestor.cs         # Test result ingestion + correlation
+├── Interop.cs          # MSBuild interop (locator + graph eval)
+├── RecordPlanner.cs    # Test-run planning + incremental fingerprints
+├── Repl.cs             # Interactive dependency graph REPL
+├── Safety.cs           # Selection safety (always-run, confidence)
+├── SelectionLoader.cs  # Edge/history loading from cache
+├── Serialization/      # AOT-safe JSON (TitiJsonContext + DTOs)
+│   └── TitiJsonContext.cs
+├── Solution.cs         # .slnx solution generation
+├── Swap.cs             # Reference swapping (PackageRef ↔ ProjectRef)
+├── TestCli.cs          # CLI output formatters
+├── TestDiscovery.cs    # `dotnet test --list-tests` parsing
+├── TestManifest.cs     # Traversal .proj + filter generation
 └── titi.csproj         # Project file
 ```
 
@@ -49,7 +54,7 @@ src/titi/
 ### Functional-core / Imperative-shell
 
 Graph analysis and transformations are pure functions; filesystem I/O and MSBuild
-calls are in the shell layer (command handlers).
+calls are in the shell layer (command handlers in `Core.cs`).
 
 ### Reference Swap
 
@@ -73,6 +78,7 @@ See `.wai/projects/tracer-bullet/designs/` for detailed design records.
 
 - **Decision 10**: Initial implementation in C# (ClojureCLR.Next deferred until
   MSBuild targets for `.clj` compilation mature)
-- **AOT**: Source-generated `JsonSerializerContext` for NativeAOT publish
-  compatibility. The adapter subprocess uses reflection-based serialization
-  (not AOT-compiled).
+- **AOT**: Source-generated `JsonSerializerContext` (`Serialization/`) for
+  NativeAOT publish compatibility. The adapter subprocess uses reflection-based
+  serialization (not AOT-compiled) — see `JsonSerializerIsReflectionEnabledByDefault`
+  in `titi.csproj`.
