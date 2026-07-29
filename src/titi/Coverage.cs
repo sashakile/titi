@@ -141,35 +141,25 @@ public static class Parser
                     if (sourcePath == null)
                         continue;
 
-                    // Collect line ranges
-                    var lineRanges = new List<(int Start, int End)>();
-                    foreach (var line in cls.Descendants("line"))
-                    {
-                        var numStr = line.Attribute("number")?.Value;
-                        if (int.TryParse(numStr, out var num))
-                        {
-                            lineRanges.Add((num, num));
-                        }
-                    }
+                    // Collect line ranges (only lines with positive hit counts)
+                    var lineRanges = ParseCoveredLines(cls);
 
                     // Build edges per method (method name as the "from" field identifier)
                     foreach (var method in cls.Descendants("method"))
                     {
                         var methodName = method.Attribute("name")?.Value ?? "unknown";
-                        var methodLines = new List<(int Start, int End)>();
-                        foreach (var line in method.Descendants("line"))
-                        {
-                            var numStr = line.Attribute("number")?.Value;
-                            if (int.TryParse(numStr, out var num))
-                                methodLines.Add((num, num));
-                        }
+                        var methodLines = ParseCoveredLines(method);
+                        // A method with zero covered lines is uncovered; skip it
+                        // to avoid false-positive test selections.
+                        if (methodLines.Length == 0)
+                            continue;
 
                         edges.Add(new TestToSourceEdge(
                             From: methodName,
                             To: sourcePath,
                             Origin: EdgeOrigin.Static,
                             Weight: 1_000_000,
-                            LineRanges: methodLines.ToArray()
+                            LineRanges: methodLines
                         ));
                     }
 
@@ -177,12 +167,16 @@ public static class Parser
                     if (!cls.Descendants("method").Any())
                     {
                         var className = cls.Attribute("name")?.Value ?? "unknown";
+                        // A class with zero covered lines is uncovered; skip it.
+                        if (lineRanges.Length == 0)
+                            continue;
+
                         edges.Add(new TestToSourceEdge(
                             From: className,
                             To: sourcePath,
                             Origin: EdgeOrigin.Static,
                             Weight: 1_000_000,
-                            LineRanges: lineRanges.ToArray()
+                            LineRanges: lineRanges
                         ));
                     }
                 }
@@ -236,5 +230,26 @@ public static class Parser
         if (canonical != normalizedRoot && !canonical.StartsWith(rootPrefix, StringComparison.Ordinal))
             return null;
         return canonical;
+    }
+
+    // Parse lines from a container (class or method), retaining only those
+    // with a positive numeric hit count. Returns an array (empty when no
+    // covered lines exist). Shared between class-level and method-level
+    // parsing paths (REFACTOR: titi-k2x.18).
+    private static (int Start, int End)[] ParseCoveredLines(XElement container)
+    {
+        var result = new List<(int Start, int End)>();
+        foreach (var line in container.Descendants("line"))
+        {
+            var numStr = line.Attribute("number")?.Value;
+            var hitsStr = line.Attribute("hits")?.Value;
+            // Only retain lines with a positive numeric hit count. A missing
+            // or invalid hits attribute is treated as uncovered (conservative).
+            if (!int.TryParse(numStr, out var num))
+                continue;
+            if (int.TryParse(hitsStr, out var hits) && hits > 0)
+                result.Add((num, num));
+        }
+        return result.ToArray();
     }
 }
