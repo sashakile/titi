@@ -156,10 +156,10 @@ $ titi repl
 Orion.Auth
 Orion.Storage
 > tree Orion.App --depth 2
-Orion.App
-├── Orion.Core.Data
-│   └── Orion.Auth
-└── Orion.Storage
+└── Orion.App  (src/Orion.App/Orion.App.csproj)
+    ├── Orion.Core.Data  (src/Orion.Core.Data/Orion.Core.Data.csproj)
+    │   └── Orion.Auth  (src/Orion.Auth/Orion.Auth.csproj)
+    └── Orion.Storage  (src/Orion.Storage/Orion.Storage.csproj)
 ```
 
 ---
