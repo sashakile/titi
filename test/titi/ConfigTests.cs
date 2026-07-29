@@ -7,6 +7,103 @@ using titi.Config;
 public class ConfigTests
 {
     /// <summary>Missing config file returns defaults (not an error).</summary>
+
+    // ── test-detection.fallback-threshold ───────────────────────
+
+    // ── test-detection.fallback-threshold ───────────────────────
+
+    [Fact]
+    public void Config_WithFallbackThreshold_ParsesCorrectly()
+    {
+        var tmpDir = Path.Combine(Path.GetTempPath(), "titi-config-test-" + Guid.NewGuid());
+        try
+        {
+            Directory.CreateDirectory(tmpDir);
+            File.WriteAllText(Path.Combine(tmpDir, "titi.config.edn"),
+                "{:prefix \"Orion.\"\n" +
+                "  :test-detection-enabled true\n" +
+                "  :fallback-threshold 0.9}");
+
+            var (config, err) = ConfigLoader.Load(tmpDir);
+            Assert.Null(err);
+            Assert.NotNull(config);
+            Assert.True(config.TestDetection.Enabled);
+            Assert.Equal(0.9, config.TestDetection.FallbackThreshold, precision: 2);
+        }
+        finally
+        {
+            if (Directory.Exists(tmpDir))
+                Directory.Delete(tmpDir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Config_FallbackThresholdBelowZero_Rejected()
+    {
+        var tmpDir = Path.Combine(Path.GetTempPath(), "titi-config-test-" + Guid.NewGuid());
+        try
+        {
+            Directory.CreateDirectory(tmpDir);
+            File.WriteAllText(Path.Combine(tmpDir, "titi.config.edn"),
+                "{:prefix \"Orion.\"\n" +
+                "  :fallback-threshold -0.1}");
+
+            var (config, err) = ConfigLoader.Load(tmpDir);
+            Assert.Null(config);
+            Assert.NotNull(err);
+        }
+        finally
+        {
+            if (Directory.Exists(tmpDir))
+                Directory.Delete(tmpDir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Config_FallbackThresholdAboveOne_Rejected()
+    {
+        var tmpDir = Path.Combine(Path.GetTempPath(), "titi-config-test-" + Guid.NewGuid());
+        try
+        {
+            Directory.CreateDirectory(tmpDir);
+            File.WriteAllText(Path.Combine(tmpDir, "titi.config.edn"),
+                "{:prefix \"Orion.\"\n" +
+                "  :fallback-threshold 1.5}");
+
+            var (config, err) = ConfigLoader.Load(tmpDir);
+            Assert.Null(config);
+            Assert.NotNull(err);
+        }
+        finally
+        {
+            if (Directory.Exists(tmpDir))
+                Directory.Delete(tmpDir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Config_FallbackThresholdDefault_Is07()
+    {
+        var tmpDir = Path.Combine(Path.GetTempPath(), "titi-config-test-" + Guid.NewGuid());
+        try
+        {
+            Directory.CreateDirectory(tmpDir);
+            // No test-detection section — use defaults
+            File.WriteAllText(Path.Combine(tmpDir, "titi.config.edn"),
+                "{:prefix \"Orion.\"}");
+
+            var (config, err) = ConfigLoader.Load(tmpDir);
+            Assert.Null(err);
+            Assert.NotNull(config);
+            Assert.Equal(0.7, config.TestDetection.FallbackThreshold, precision: 2);
+        }
+        finally
+        {
+            if (Directory.Exists(tmpDir))
+                Directory.Delete(tmpDir, recursive: true);
+        }
+    }
+
     [Fact]
     public void Load_NoConfigFile_ReturnsDefaults()
     {

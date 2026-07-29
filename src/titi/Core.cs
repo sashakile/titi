@@ -767,6 +767,26 @@ public static class Program
             ? (double)allResolved / affected.ChangedFiles.Length
             : 1.0;
 
+        // ── Exit on low confidence before emitting partial output ──
+        // When confidence falls below the configured threshold, suppress
+        // all test-ID or Traversal output and return exit 10 with an
+        // actionable diagnostic identifying the affected projects that
+        // must be run in full.
+        if (confidence < (config?.TestDetection.FallbackThreshold ?? 0.7))
+        {
+            if (listMode)
+            {
+                Console.Error.WriteLine("Selection confidence below threshold.");
+                PrintAffectedProjectsDiagnostic(affected);
+            }
+            else
+            {
+                Console.Error.WriteLine("Selection confidence below threshold.");
+                PrintAffectedProjectsDiagnostic(affected);
+            }
+            return 10;
+        }
+
         // --list mode: print selected test IDs
         if (listMode)
         {
@@ -774,12 +794,6 @@ public static class Program
             foreach (var line in output)
                 Console.WriteLine(line);
 
-            // Exit code signaling
-            if (confidence < (config?.TestDetection.FallbackThreshold ?? 0.7))
-            {
-                Console.Error.WriteLine("Confidence below threshold — consider full-suite run.");
-                return 10;
-            }
             if (output.Length == 0)
                 return 20; // safe to skip
             return 0;
@@ -862,13 +876,6 @@ public static class Program
                     Console.Error.WriteLine($"    note: {paramRows.Length} parameterized row(s) — whole-method selected (over-approximation)");
                 }
             }
-        }
-
-        // Emit confidence diagnostics
-        if (confidence < (config?.TestDetection.FallbackThreshold ?? 0.7))
-        {
-            Console.Error.WriteLine("Warning: selection confidence below threshold. Consider full-suite run.");
-            return 10;
         }
 
         if (selectedItems.Length == 0)
@@ -1042,5 +1049,18 @@ public static class Program
     {
         var invalid = Path.GetInvalidFileNameChars();
         return new string(s.Select(c => invalid.Contains(c) ? '_' : c).ToArray());
+    }
+
+    /// <summary>
+    /// Print an actionable diagnostic identifying projects that must be run
+    /// in full when selection confidence falls below the configured threshold.
+    /// </summary>
+    static void PrintAffectedProjectsDiagnostic(AffectedSet affected)
+    {
+        Console.Error.WriteLine("Affected projects that must be run in full:");
+        foreach (var proj in affected.DirectlyAffected)
+            Console.Error.WriteLine($"  {proj.PackageId} (direct)");
+        foreach (var proj in affected.TransitivelyAffected)
+            Console.Error.WriteLine($"  {proj.PackageId} (transitive)");
     }
 }

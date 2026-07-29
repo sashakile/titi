@@ -96,6 +96,7 @@ public static class ConfigLoader
         var sourceRoot = ExtractString(raw, ":source-root") ?? ExtractString(raw, ":sourceRoot") ?? "src/";
         var versionPolicyStr = ExtractKeyword(raw, ":version-policy") ?? ExtractKeyword(raw, ":versionPolicy") ?? "semver-compatible";
         var detectionEnabled = ExtractKeyword(raw, ":test-detection-enabled") == "true";
+        var fallbackThreshold = ParseFallbackThreshold(ExtractKeyword(raw, ":fallback-threshold"));
 
         var versionPolicy = versionPolicyStr switch
         {
@@ -103,6 +104,10 @@ public static class ConfigLoader
             "force" => VersionPolicy.Force,
             _ => VersionPolicy.SemverCompatible,
         };
+
+        var testDetection = detectionEnabled
+            ? TestDetectionConfig.Default with { Enabled = true, FallbackThreshold = fallbackThreshold ?? 0.7 }
+            : new TestDetectionConfig();
 
         return new TitiConfig(
             Prefix: prefix ?? "",
@@ -114,9 +119,7 @@ public static class ConfigLoader
             Ci: Defaults.Ci
         )
         {
-            TestDetection = detectionEnabled
-                ? TestDetectionConfig.Default
-                : new TestDetectionConfig()
+            TestDetection = testDetection
         };
     }
 
@@ -128,7 +131,18 @@ public static class ConfigLoader
 
     static string? ExtractKeyword(string raw, string key)
     {
-        var match = Regex.Match(raw, $@"{key}\s+([a-zA-Z0-9_-]+)");
+        var match = Regex.Match(raw, $@"{key}\s+([a-zA-Z0-9_.-]+)");
         return match.Success ? match.Groups[1].Value : null;
+    }
+
+    static double? ParseFallbackThreshold(string? raw)
+    {
+        if (raw == null) return null;
+        if (!double.TryParse(raw,
+                System.Globalization.NumberStyles.Any,
+                System.Globalization.CultureInfo.InvariantCulture,
+                out var threshold) || threshold < 0.0 || threshold > 1.0)
+            throw new FormatException("test-detection.fallback-threshold must be a number between 0 and 1");
+        return threshold;
     }
 }
