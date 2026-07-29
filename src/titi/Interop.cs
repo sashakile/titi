@@ -126,19 +126,32 @@ public static class MsBuildSetup
         );
     }
 
-    static Tfm[] ParseTfms(string raw)
+    internal static Tfm[] ParseTfms(string raw)
     {
         if (string.IsNullOrEmpty(raw)) return [];
-        return raw.Split(';').Select(tfm =>
-        {
-            var m = tfm.Trim();
-            var fw = m.StartsWith("netstandard") ? "netstandard"
-                   : m.StartsWith("netcoreapp") ? "netcoreapp"
-                   : m.StartsWith("net") ? "net" : "other";
-            var ver = double.TryParse(m.AsSpan(fw == "net" ? 3 : fw.Length),
-                System.Globalization.NumberStyles.Any,
-                System.Globalization.CultureInfo.InvariantCulture, out var v) ? v : 10.0;
-            return new Tfm(m, fw, ver);
-        }).ToArray();
+        return raw.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(tfm =>
+            {
+                var fw = tfm.StartsWith("netstandard") ? "netstandard"
+                       : tfm.StartsWith("netcoreapp") ? "netcoreapp"
+                       : tfm.StartsWith("net") ? "net" : "other";
+                int start = fw == "net" ? 3 : fw.Length;
+                double ver = 10.0;
+                if (start < tfm.Length)
+                {
+                    var verSpan = tfm.AsSpan(start);
+                    // Strip platform suffix (e.g. -windows, -android, -ios)
+                    int dash = verSpan.IndexOf('-');
+                    if (dash >= 0)
+                        verSpan = verSpan[..dash];
+                    int plus = verSpan.IndexOf('+');
+                    if (plus >= 0)
+                        verSpan = verSpan[..plus];
+                    double.TryParse(verSpan,
+                        System.Globalization.NumberStyles.Any,
+                        System.Globalization.CultureInfo.InvariantCulture, out ver);
+                }
+                return new Tfm(tfm, fw, ver);
+            }).ToArray();
     }
 }
