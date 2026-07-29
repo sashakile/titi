@@ -408,6 +408,7 @@ public static class Program
 
         var allEdges = new List<TestToSourceEdge>();
         var failures = 0;
+        var RecordedOk = new HashSet<string>();
 
         // Only re-run changed projects (TID-11 incremental).
         if (changedProjects.Length > 0)
@@ -447,6 +448,9 @@ public static class Program
 
                     var projectEdges = EdgeBuilder.BuildFromRun(trxResults, coveredSources);
                     allEdges.AddRange(projectEdges);
+
+                    // Track successful project for fingerprint advancement
+                    RecordedOk.Add(plan.PackageId);
 
                     // Write per-project edge file for future incremental runs.
                     var projEdgePath = titi.RecordPlanner.EdgeFilePath(projectsDir, plan.PackageId);
@@ -526,12 +530,27 @@ public static class Program
                 allEdgeEntries,
                 titi.Serialization.TitiJsonContext.Default.EdgeEntryArray));
 
-        // Update per-project fingerprints (fresh values for all current projects).
+        // Update per-project fingerprints only for projects that were
+        // successfully recorded. Failed projects keep their prior fingerprints
+        // so they are retried on the next incremental run.
         var currentFingerprints = new Dictionary<string, string>();
         foreach (var proj in testProjects)
         {
             var projDir = Path.GetDirectoryName(proj.Path) ?? "";
-            currentFingerprints[proj.PackageId] = titi.TestDiscovery.DiscoveryCache.ComputeFingerprint(projDir, proj.Path);
+            // Only advance fingerprint for unchanged projects (read from prior)
+            // or successfully-recorded changed projects (compute fresh).
+            if (RecordedOk.Contains(proj.PackageId) || unchangedPackageIds.Contains(proj.PackageId))
+            {
+                currentFingerprints[proj.PackageId] = titi.TestDiscovery.DiscoveryCache.ComputeFingerprint(projDir, proj.Path);
+            }
+        }
+        // Preserve prior fingerprints for projects that failed recording.
+        // They keep their old fingerprint so they're re-detected as changed
+        // on the next run.
+        foreach (var kv in priorFingerprints)
+        {
+            if (!currentFingerprints.ContainsKey(kv.Key))
+                currentFingerprints[kv.Key] = kv.Value;
         }
         RecordPlanner.SaveProjectFingerprints(cacheDir, currentFingerprints);
 
