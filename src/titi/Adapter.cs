@@ -373,10 +373,18 @@ public static class TestarudaAdapter
         return JsonSerializer.Serialize(new { ok = true, result = response });
     }
 
-    /// <summary>Format discover items as JSON.</summary>
+    /// <summary>Format discover items as JSON using the canonical testaruda adapter protocol format.
+    /// Maps titi's internal fields to: node_id (test_id), suite_kind (ClassName.MethodName), file (assembly_path).
+    /// result is a direct array, not wrapped in {tests: [...]}.</summary>
     public static string FormatResponse(AdapterTestItem[] items)
     {
-        return JsonSerializer.Serialize(new { ok = true, result = new { tests = items } });
+        var canonical = items.Select(item => new
+        {
+            node_id = item.TestId,
+            suite_kind = $"{item.ClassName}.{item.MethodName}",
+            file = item.AssemblyPath
+        }).ToArray();
+        return JsonSerializer.Serialize(new { ok = true, result = canonical });
     }
 
     /// <summary>Format static-deps items as JSON.</summary>

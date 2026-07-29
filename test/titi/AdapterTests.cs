@@ -605,9 +605,12 @@ public class AdapterTests
 
         using var doc = JsonDocument.Parse(json);
         var result = doc.RootElement.GetProperty("result");
-        var tests = result.GetProperty("tests").EnumerateArray().ToArray();
-        Assert.Single(tests);
-        Assert.Equal("T1", tests[0].GetProperty("test_id").GetString());
+        // Canonical format: result is a direct array, not {tests: [...]}
+        var canonicalItems = result.EnumerateArray().ToArray();
+        Assert.Single(canonicalItems);
+        Assert.Equal("T1", canonicalItems[0].GetProperty("node_id").GetString());
+        Assert.Equal("C.M", canonicalItems[0].GetProperty("suite_kind").GetString());
+        Assert.Equal("/asm.dll", canonicalItems[0].GetProperty("file").GetString());
     }
 
     // ── Ingest edge cases ────────────────────────────────────────
@@ -694,13 +697,14 @@ public class AdapterTests
 
         using var discoverDoc = JsonDocument.Parse(discoverLine);
         var discoverResult = discoverDoc.RootElement.GetProperty("result");
-        var tests = discoverResult.GetProperty("tests").EnumerateArray().ToArray();
+        // Canonical format: result is a direct array
+        var canonicalItems = discoverResult.EnumerateArray().ToArray();
 
         // Should find one item per test method (not per project)
-        Assert.True(tests.Length > 2, $"Expected multiple test methods, got {tests.Length}");
-        // Each item should have a method-level test_id (contains a dot-separated method)
-        var testIds = tests.Select(t => t.GetProperty("test_id").GetString()).ToArray();
-        Assert.Contains(testIds, id => id != null && (id.Contains("Test") || id.Contains(".")));
+        Assert.True(canonicalItems.Length > 2, $"Expected multiple test methods, got {canonicalItems.Length}");
+        // Each item should have a method-level node_id (contains a dot-separated method)
+        var nodeIds = canonicalItems.Select(t => t.GetProperty("node_id").GetString()).ToArray();
+        Assert.Contains(nodeIds, id => id != null && (id.Contains("Test") || id.Contains(".")));
 
         // Clean shutdown
         proc.StandardInput.Close();

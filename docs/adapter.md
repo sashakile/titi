@@ -26,8 +26,10 @@ object.
 
 ```
 → {"command":"discover","params":{}}
-← {"result":{"tests":[{"test_id":"LibTest.MyTests.Test1","assembly_path":"/asm/LibTest.dll","class_name":"LibTest.MyTests","method_name":"Test1","framework":"xunit","tier":"unit"}]}}
+← {"result":[{"node_id":"LibTest.MyTests.Test1","suite_kind":"LibTest.MyTests.Test1","file":"/asm/LibTest.dll"}]}
 ```
+
+The response uses the canonical testaruda adapter protocol format: `result` is a direct array of items with `node_id`, `suite_kind`, and `file` fields. `suite_kind` is the fully-qualified `ClassName.MethodName`.
 
 ### Commands
 
