@@ -1,0 +1,11 @@
+/* Push body content below the fixed header (navbar + subnav) */
+/* header is position: fixed on desktop, position: static on mobile */
+body {
+  padding-top: 90px;
+}
+
+@media only screen and (max-width: 768px) {
+  body {
+    padding-top: 0;
+  }
+}
