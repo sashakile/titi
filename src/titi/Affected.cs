@@ -160,7 +160,11 @@ public static class Analyzer
                 return (null, $"git exited with code {proc.ExitCode}: {error.Trim()}");
 
             var files = output.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-            return (files.Length > 0 ? files : null, null);
+            // A successful diff with zero changed files is an empty array, NOT null.
+            // null is reserved for the unavailable-git/fallback signal so affected
+            // analysis selects every project only on real git failure, not on a
+            // clean no-change invocation.
+            return (files, null);
         }
         catch (Exception ex)
         {
