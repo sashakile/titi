@@ -173,7 +173,6 @@
           "Microsoft.VisualStudio.SolutionPersistence": "[1.0.52, )"
         }
       }
-    },
-    "net10.0/linux-x64": {}
+    }
   }
 }

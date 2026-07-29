@@ -13,8 +13,6 @@
     <PackageOutputPath>$(MSBuildThisFileDirectory)dist/nupkg</PackageOutputPath>
     <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
-    <!-- Include linux-x64 RID in lock file for AOT publish compatibility -->
-    <RuntimeIdentifiers>linux-x64</RuntimeIdentifiers>
   </PropertyGroup>
 
 </Project>
