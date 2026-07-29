@@ -9,26 +9,4 @@
 - name: testaruda Adapter
   href: adapter.md
 - name: Openspec Specs
-  items:
-  - name: Bundles
-    href: specs/bundles/spec.md
-  - name: CLI
-    href: specs/cli/spec.md
-  - name: Configuration
-    href: specs/configuration/spec.md
-  - name: Dependency Graph
-    href: specs/dependency-graph/spec.md
-  - name: Diagnostics
-    href: specs/diagnostics/spec.md
-  - name: Domain Model
-    href: specs/domain-model/spec.md
-  - name: Graph Cache
-    href: specs/graph-cache/spec.md
-  - name: MSBuild Integration
-    href: specs/msbuild-integration/spec.md
-  - name: Reference Swap
-    href: specs/reference-swap/spec.md
-  - name: Solution Generation
-    href: specs/solution-generation/spec.md
-  - name: Versioning
-    href: specs/versioning/spec.md
+  href: specs/toc.yml

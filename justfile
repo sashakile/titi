@@ -71,11 +71,6 @@ clean:
     cd {{project}} && dotnet clean test/titi/titi.Tests.csproj
     cd {{project}} && find src test -maxdepth 5 \( -name "bin" -o -name "obj" \) -print0 2>/dev/null | xargs -r0 rm -rf
 
-# Restore dependencies
-restore:
-    cd {{project}} && dotnet restore src/titi/titi.csproj
-    cd {{project}} && dotnet restore test/titi/titi.Tests.csproj
-
 # Format Clojure sources (requires cljfmt on PATH)
 fmt:
     cljfmt fix .
