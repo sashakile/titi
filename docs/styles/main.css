@@ -1,11 +1,20 @@
 /* Push body content below the fixed header (navbar + subnav) */
 /* header is position: fixed on desktop, position: static on mobile */
 body {
-  padding-top: 90px;
+  padding-top: 100px;
 }
 
 @media only screen and (max-width: 768px) {
   body {
     padding-top: 0;
   }
+}
+
+/* Top navbar should show flat nav items, not the expandable tree */
+#navbar ul.navbar-nav ul.nav {
+  display: none;
+}
+
+#navbar .expand-stub {
+  display: none;
 }

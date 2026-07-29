@@ -41,7 +41,7 @@ jobs:
           dotnet docfx docs/docfx.json --output docs
       - name: Apply custom styles
         run: |
-          cp docs/styles/main.css docs/_site/styles/main.css
+          cp docs/styles/* docs/_site/styles/
       - name: Upload Pages artifact
         if: github.ref_name == 'main'
         uses: actions/upload-pages-artifact@v3
