@@ -27,6 +27,7 @@ target/
 
 # Build output
 docs/_site/
+dist/
 
 # OS
 .DS_Store

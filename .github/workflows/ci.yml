@@ -35,6 +35,18 @@ jobs:
         run: |
           dotnet test test/titi/titi.Tests.csproj --no-build --configuration Release --collect:"XPlat Code Coverage"
 
+      - name: Pack & validate tool installation
+        run: |
+          dotnet pack src/titi/titi.csproj --no-build --configuration Release -o dist/nupkg
+          nupkg=$(ls dist/nupkg/*.nupkg | head -1)
+          echo "Testing package: $nupkg"
+          # Install in a temp dir and run --help
+          temp_dir=$(mktemp -d)
+          dotnet tool install titi --add-source "$PWD/dist/nupkg" --tool-path "$temp_dir"
+          $temp_dir/titi --help
+          echo "✅ Package validated successfully"
+          rm -rf "$temp_dir"
+
       - name: Upload coverage
         uses: codecov/codecov-action@v5
         with:

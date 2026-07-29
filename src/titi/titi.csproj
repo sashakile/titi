@@ -8,6 +8,12 @@
     <AssemblyName>titi</AssemblyName>
     <RootNamespace>titi</RootNamespace>
     <PublishAot>true</PublishAot>
+
+    <!-- NuGet tool packaging -->
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>titi</ToolCommandName>
+    <PackageId>titi</PackageId>
+
     <!-- Suppress AOT analysis warnings during build (only meaningful during publish) -->
     <NoWarn>$(NoWarn);IL2026;IL3050;IL2104</NoWarn>
     <!-- Enable reflection-based JSON serialization for the testaruda adapter

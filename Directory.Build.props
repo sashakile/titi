@@ -1,0 +1,17 @@
+<Project>
+
+  <PropertyGroup>
+    <Version>0.2.0</Version>
+    <Authors>sashakile</Authors>
+    <Company>sashakile</Company>
+    <Description>titi — monorepo CLI for C# projects. Affected-set computation, solution generation, testaruda adapter, and more.</Description>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/sk/titi</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/sk/titi.git</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>msbuild;monorepo;solution;affected;testaruda;dotnet</PackageTags>
+    <PackageOutputPath>$(MSBuildThisFileDirectory)dist/nupkg</PackageOutputPath>
+    <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
+  </PropertyGroup>
+
+</Project>
