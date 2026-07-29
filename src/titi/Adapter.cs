@@ -141,8 +141,10 @@ public static class TestarudaAdapter
 
     /// <summary>
     /// Return per-method selection results using pre-discovered test items,
-    /// edges, and changed files. When test-item data is missing, falls back
-    /// to project-level empty result (no method-level analysis possible).
+    /// edges, and changed files. Only test items belonging to the requested
+    /// <paramref name="affectedProjects"/> are considered for selection.
+    /// When test-item data is missing, falls back to project-level empty result
+    /// (no method-level analysis possible).
     /// </summary>
     public static StaticDepsItem[] HandleStaticDeps(
         MonorepoGraph graph,
@@ -155,8 +157,30 @@ public static class TestarudaAdapter
         if (discoveredTests == null || discoveredTests.Count == 0)
             return [];
 
-        // Flatten all test items from discovered projects
-        var allItems = discoveredTests.Values
+        // Filter to only the requested affected projects.
+        // When affectedProjects is empty (caller didn't specify), use all
+        // discovered projects for backward compatibility.
+        Dictionary<string, TestItem[]> scopedTests;
+        if (affectedProjects.Length > 0)
+        {
+            var affectedSet = new HashSet<string>(affectedProjects, StringComparer.Ordinal);
+            scopedTests = new Dictionary<string, TestItem[]>(StringComparer.Ordinal);
+            foreach (var (pkgId, items) in discoveredTests)
+            {
+                if (affectedSet.Contains(pkgId))
+                    scopedTests[pkgId] = items;
+            }
+        }
+        else
+        {
+            scopedTests = discoveredTests;
+        }
+
+        if (scopedTests.Count == 0)
+            return [];
+
+        // Flatten all test items from scoped projects
+        var allItems = scopedTests.Values
             .SelectMany(t => t)
             .ToArray();
 
