@@ -1018,7 +1018,7 @@ public static class Program
     {
         Console.Error.WriteLine($"Unknown command: {cmd}");
         Console.Error.WriteLine("Run 'titi --help' for usage.");
-        return 1;
+        return 2;
     }
 
     static void PrintError(TitiError err)
