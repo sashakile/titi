@@ -28,7 +28,12 @@ public static class DiscoveryCache
             return cached;
 
         var items = discover();
-        Store(cacheDir, packageId, fingerprint, items);
+        // Only persist when discovery returned actual items. A cold cache + empty
+        // result means the project is unavailable (e.g. adapter subprocess that
+        // cannot run discovery). Storing empty would poison the cache, suppressing
+        // future discovery until the fingerprint changes.
+        if (items.Length > 0)
+            Store(cacheDir, packageId, fingerprint, items);
         return items;
     }
 

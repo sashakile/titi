@@ -258,7 +258,7 @@ public class TestItemCacheTests : IDisposable
     }
 
     [Fact]
-    public void GetOrDiscover_EmptyDiscovery_StillCaches()
+    public void GetOrDiscover_EmptyDiscovery_DoesNotCache()
     {
         var cacheDir = Path.Combine(_tempDir, "cache");
         var fingerprint = "abc";
@@ -267,9 +267,9 @@ public class TestItemCacheTests : IDisposable
 
         Assert.Empty(result);
 
-        // Empty array should still be cached (fast on subsequent calls)
+        // Cold empty discovery must not be cached — storing empty would poison
+        // the cache and suppress future real discovery until the fingerprint changes.
         var loaded = DiscoveryCache.Load(cacheDir, "test-proj", fingerprint);
-        Assert.NotNull(loaded);
-        Assert.Empty(loaded);
+        Assert.Null(loaded);
     }
 }
