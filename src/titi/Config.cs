@@ -41,7 +41,8 @@ public static class ConfigLoader
     {
         "prefix", "source-root", "sourceroot", "source-roots",
         "version-policy", "versionpolicy",
-        "test-detection-enabled", "fallback-threshold"
+        "test-detection-enabled", "fallback-threshold",
+        "test-sdk-ids", "testsdkids"
     };
 
     /// <summary>Load config from repo root. Missing file returns defaults (not an error).</summary>
@@ -139,7 +140,8 @@ public static class ConfigLoader
             Ci: Defaults.Ci
         )
         {
-            TestDetection = testDetection
+            TestDetection = testDetection,
+            TestSdkIds = ParseTestSdkIds(root)
         };
     }
 
@@ -162,6 +164,25 @@ public static class ConfigLoader
         if (obj.TryGetProperty(key, out var el) && el.ValueKind == JsonValueKind.Number)
             return el.GetDouble();
         return null;
+    }
+
+    /// <summary>Parse optional test-sdk-ids array from config.</summary>
+    static string[]? ParseTestSdkIds(JsonElement root)
+    {
+        if (!root.TryGetProperty("test-sdk-ids", out var el) &&
+            !root.TryGetProperty("testSdkIds", out el))
+            return null;
+
+        if (el.ValueKind != JsonValueKind.Array)
+            return null;
+
+        var ids = new List<string>();
+        foreach (var item in el.EnumerateArray())
+        {
+            if (item.ValueKind == JsonValueKind.String)
+                ids.Add(item.GetString()!);
+        }
+        return ids.Count > 0 ? [.. ids] : null;
     }
 
     /// <summary>

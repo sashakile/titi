@@ -59,12 +59,52 @@ public static class MsBuildSetup
         return new ProjectGraph(entryPoints);
     }
 
-    public static ProjectDescriptor ConvertNode(ProjectGraphNode node)
+    /// <summary>
+    /// Default well-known test-SDK package IDs. Matches <see cref="TitiConfig.DefaultTestSdkIds"/>.
+    /// </summary>
+    public static readonly string[] DefaultTestSdkIds =
+    [
+        "xunit",
+        "xunit.runner.visualstudio",
+        "NUnit",
+        "NUnit3TestAdapter",
+        "MSTest.TestAdapter",
+        "MSTest.TestFramework",
+        "Microsoft.NET.Test.Sdk",
+        "Microsoft.VisualStudio.TestPlatform.TestFramework",
+        "Microsoft.VisualStudio.TestPlatform.TestFramework.Extensions",
+        "Shouldly",
+        "FluentAssertions",
+        "Moq",
+        "NSubstitute",
+        "coverlet.collector",
+        "coverlet.msbuild",
+    ];
+
+    /// <summary>
+    /// Check whether a set of package references includes any known test-SDK
+    /// package ID. Used to detect test projects that don't explicitly set
+    /// <c>&lt;IsTestProject&gt;true&lt;/IsTestProject&gt;</c>.
+    /// </summary>
+    public static bool HasTestSdkRef(PackageRef[] packageRefs, string[]? testSdkIds = null)
+    {
+        if (packageRefs == null || packageRefs.Length == 0)
+            return false;
+
+        var ids = testSdkIds ?? DefaultTestSdkIds;
+        return packageRefs.Any(r =>
+            ids.Contains(r.PackageId, StringComparer.OrdinalIgnoreCase));
+    }
+
+    public static ProjectDescriptor ConvertNode(ProjectGraphNode node, string[]? testSdkIds = null)
     {
         var proj = node.ProjectInstance;
         var properties = new Dictionary<string, string>();
         foreach (var prop in proj.Properties)
             properties[prop.Name] = prop.EvaluatedValue;
+
+        var packageRefs = GetItems(proj, "PackageReference").Select(ItemToPackageRef).ToArray();
+        var explicitTest = bool.TryParse(GetProperty(proj, "IsTestProject", "false"), out var t) && t;
 
         return new ProjectDescriptor(
             Path: proj.FullPath,
@@ -72,8 +112,8 @@ public static class MsBuildSetup
             Version: ParseVersion(GetProperty(proj, "Version", "1.0.0")),
             TargetFrameworks: ParseTfms(GetProperty(proj, "TargetFrameworks", "net10.0")),
             IsPackable: bool.TryParse(GetProperty(proj, "IsPackable", "true"), out var p) && p,
-            IsTestProject: bool.TryParse(GetProperty(proj, "IsTestProject", "false"), out var t) && t,
-            PackageRefs: GetItems(proj, "PackageReference").Select(ItemToPackageRef).ToArray(),
+            IsTestProject: explicitTest || HasTestSdkRef(packageRefs, testSdkIds),
+            PackageRefs: packageRefs,
             ProjectRefs: GetItems(proj, "ProjectReference").Select(ItemToProjectRef).ToArray(),
             Properties: properties
         );

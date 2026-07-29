@@ -131,6 +131,38 @@ public record TitiConfig(
 {
     /// <summary>Test detection configuration (TID-6)</summary>
     public TestDetectionConfig TestDetection { get; init; } = new();
+
+    /// <summary>
+    /// Default well-known test-SDK package IDs used for test-project detection
+    /// when IsTestProject is not explicitly set in the .csproj.
+    /// </summary>
+    public static readonly string[] DefaultTestSdkIds =
+    [
+        "xunit",
+        "xunit.runner.visualstudio",
+        "NUnit",
+        "NUnit3TestAdapter",
+        "MSTest.TestAdapter",
+        "MSTest.TestFramework",
+        "Microsoft.NET.Test.Sdk",
+        "Microsoft.VisualStudio.TestPlatform.TestFramework",
+        "Microsoft.VisualStudio.TestPlatform.TestFramework.Extensions",
+        "Shouldly",
+        "FluentAssertions",
+        "Moq",
+        "NSubstitute",
+        "coverlet.collector",
+        "coverlet.msbuild",
+    ];
+
+    /// <summary>
+    /// Optional override of test-SDK package IDs for test-project detection.
+    /// When null or empty, <see cref="DefaultTestSdkIds"/> is used.
+    /// </summary>
+    public string[]? TestSdkIds { get; init; }
+
+    /// <summary>Resolved test-SDK IDs (user override or default).</summary>
+    public string[] EffectiveTestSdkIds => TestSdkIds ?? DefaultTestSdkIds;
 }
 
 // ── TID-6: Test Detection Config ────────────────────────────────

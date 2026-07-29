@@ -86,7 +86,7 @@ public static class Program
 
         foreach (var node in msGraph.ProjectNodesTopologicallySorted)
         {
-            descriptors[node.ProjectInstance.FullPath] = MsBuildSetup.ConvertNode(node);
+            descriptors[node.ProjectInstance.FullPath] = MsBuildSetup.ConvertNode(node, config.EffectiveTestSdkIds);
         }
 
         var graph = GraphBuilder.Build(msGraph, descriptors, repoRoot);
