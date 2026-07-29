@@ -521,6 +521,55 @@ public class AdapterTests
         Assert.Equal("shutting_down", result.GetProperty("status").GetString());
     }
 
+    [Fact]
+    public void RunLoop_Shutdown_TerminatesImmediately()
+    {
+        var stdin = new StringReader(
+            """
+            {"command":"handshake","params":{}}
+            {"command":"shutdown","params":{}}
+            {"command":"discover","params":{}}
+            """);
+        var stdout = new StringWriter();
+
+        var exitCode = TestarudaAdapter.RunLoop(null, stdin, stdout);
+
+        var output = stdout.ToString();
+        var lines = output.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+
+        // Should have exactly two responses (handshake + shutdown), not three
+        Assert.Equal(2, lines.Length);
+        Assert.Equal(0, exitCode);
+
+        // Verify both responses parse as valid JSON and identify their commands
+        using var doc1 = JsonDocument.Parse(lines[0]);
+        Assert.True(doc1.RootElement.GetProperty("ok").GetBoolean());
+
+        using var doc2 = JsonDocument.Parse(lines[1]);
+        Assert.True(doc2.RootElement.GetProperty("result").GetProperty("status").GetString() == "shutting_down");
+    }
+
+    [Fact]
+    public void RunLoop_NoShutdown_ReadsUntilEof()
+    {
+        var stdin = new StringReader(
+            """
+            {"command":"handshake","params":{}}
+            {"command":"handshake","params":{}}
+            {"command":"discover","params":{}}
+            """);
+        var stdout = new StringWriter();
+
+        var exitCode = TestarudaAdapter.RunLoop(null, stdin, stdout);
+
+        var output = stdout.ToString();
+        var lines = output.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+
+        // Without shutdown, all three commands should be processed
+        Assert.Equal(3, lines.Length);
+        Assert.Equal(0, exitCode);
+    }
+
     // ── Protocol: response serialization ─────────────────────────
 
     [Fact]
