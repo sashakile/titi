@@ -29,7 +29,7 @@ object.
 ← {"result":[{"node_id":"LibTest.MyTests.Test1","suite_kind":"LibTest.MyTests.Test1","file":"/asm/LibTest.dll"}]}
 ```
 
-The response uses the canonical testaruda adapter protocol format: `result` is a direct array of items with `node_id`, `suite_kind`, and `file` fields. `suite_kind` is the fully-qualified `ClassName.MethodName`.
+The response uses the canonical testaruda adapter protocol format: `result` is a direct array of items with `node_id`, `suite_kind`, and `file` fields. `suite_kind` is the fully-qualified `ClassName.MethodName` (per the testaruda adapter protocol).
 
 ### Commands
 

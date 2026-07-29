@@ -381,7 +381,7 @@ public static class TestarudaAdapter
         var canonical = items.Select(item => new
         {
             node_id = item.TestId,
-            suite_kind = $"{item.ClassName}.{item.MethodName}",
+            suite_kind = $"{item.ClassName ?? "?"}.{item.MethodName ?? "?"}",
             file = item.AssemblyPath
         }).ToArray();
         return JsonSerializer.Serialize(new { ok = true, result = canonical });
