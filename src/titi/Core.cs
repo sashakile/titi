@@ -596,46 +596,19 @@ public static class Program
         return flat;
     }
 
-    static (bool Ok, string Stdout, string Stderr) RunDotnet(string arguments, string workingDir)
+    internal static (bool Ok, string Stdout, string Stderr) RunDotnet(string arguments, string workingDir)
     {
-        var psi = new System.Diagnostics.ProcessStartInfo
-        {
-            FileName = "dotnet",
-            Arguments = arguments,
-            WorkingDirectory = workingDir,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-        };
-        using var proc = System.Diagnostics.Process.Start(psi);
-        if (proc == null)
-            return (false, "", "failed to start dotnet");
-        var stdout = proc.StandardOutput.ReadToEnd();
-        var stderr = proc.StandardError.ReadToEnd();
-        proc.WaitForExit(600_000); // 10 min per project
-        return (proc.ExitCode == 0, stdout, stderr);
+        var result = RunProcess("dotnet", arguments, workingDir, 600_000);
+        return (result.Ok, result.Stdout ?? "", result.Stderr ?? "");
     }
 
     // `dotnet test --list-tests` for `titi affected` discovery. Returns stdout
     // (the console test list) on success; the caller parses via TestDiscovery.Parser.
-    static (string Stdout, string Stderr, bool Ok) RunDotnetListTests(string projectPath, string workingDir)
+    internal static (string Stdout, string Stderr, bool Ok) RunDotnetListTests(string projectPath, string workingDir)
     {
-        var psi = new System.Diagnostics.ProcessStartInfo
-        {
-            FileName = "dotnet",
-            Arguments = $"test \"{projectPath}\" --list-tests",
-            WorkingDirectory = workingDir,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-        };
-        using var proc = System.Diagnostics.Process.Start(psi);
-        if (proc == null)
-            return ("", "failed to start dotnet", false);
-        var stdout = proc.StandardOutput.ReadToEnd();
-        var stderr = proc.StandardError.ReadToEnd();
-        proc.WaitForExit(60_000);
-        return (stdout, stderr, proc.ExitCode == 0);
+        var args = $"test \"{projectPath}\" --list-tests";
+        var result = RunProcess("dotnet", args, workingDir, 60_000);
+        return (result.Stdout ?? "", result.Stderr ?? "", result.Ok);
     }
 
     static int TestManifestCommand(string[] args)
@@ -1023,6 +996,45 @@ public static class Program
         Console.Error.WriteLine($"Error {(int)err.Code:D4}: {err.Message}");
         foreach (var suggestion in err.Suggestions)
             Console.Error.WriteLine($"  Suggested: {suggestion}");
+    }
+
+    /// <summary>
+    /// Run a subprocess with async stream draining, enforced timeout, and
+    /// process-tree termination on timeout.
+    /// </summary>
+    public static (bool Ok, string? Stdout, string? Stderr) RunProcess(
+        string fileName, string arguments, string workingDir, int timeoutMs)
+    {
+        var psi = new System.Diagnostics.ProcessStartInfo
+        {
+            FileName = fileName,
+            Arguments = arguments,
+            WorkingDirectory = workingDir,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+        };
+        using var proc = System.Diagnostics.Process.Start(psi);
+        if (proc == null)
+            return (false, null, "failed to start process");
+
+        // Asynchronously drain both streams to prevent deadlock.
+        var stdoutTask = proc.StandardOutput.ReadToEndAsync();
+        var stderrTask = proc.StandardError.ReadToEndAsync();
+
+        if (proc.WaitForExit(timeoutMs))
+        {
+            // Process exited within timeout.
+            proc.WaitForExit(); // ensure async handlers complete
+            var stdout = stdoutTask.GetAwaiter().GetResult();
+            var stderr = stderrTask.GetAwaiter().GetResult();
+            return (proc.ExitCode == 0, stdout, stderr);
+        }
+
+        // Timeout exceeded — kill the process tree.
+        try { proc.Kill(entireProcessTree: true); } catch { }
+        proc.WaitForExit(); // allow Kill to complete
+        return (false, null, $"Process timed out after {timeoutMs}ms and was terminated");
     }
 
     /// <summary>Sanitize a project path or package id for use as a filename.</summary>

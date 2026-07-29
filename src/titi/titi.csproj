@@ -17,6 +17,13 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- Make internals visible to test project -->
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+      <_Parameter1>titi.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- ClojureCLR runtime -->
     <PackageReference Include="Clojure" Version="1.12.2" />
 
