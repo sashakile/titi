@@ -34,7 +34,7 @@ jobs:
           mkdir -p docs/specs
           cp -r openspec/specs/* docs/specs/
           cp docs/specs-toc.yml docs/specs/toc.yml
-          dotnet docfx docs/docfx.json --output docs/_site
+          dotnet docfx docs/docfx.json --output docs
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:

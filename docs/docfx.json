@@ -1,15 +1,4 @@
 {
-  "metadata": [
-    {
-      "src": [
-        {
-          "files": ["**/*.cs"],
-          "src": "../src/titi"
-        }
-      ],
-      "dest": "api"
-    }
-  ],
   "build": {
     "content": [
       {
