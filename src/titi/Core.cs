@@ -45,6 +45,7 @@ public static class Program
             ["tests", "list", ..] => TestsListCommand(args[2..]),
             ["tests", "ingest", ..] => TestsIngestCommand(args[2..]),
             ["tests", "record", ..] => TestsRecordCommand(),
+            ["version", "detect", ..] => VersionDetectCommand(),
             ["testaruda-adapter", ..] => TestarudaAdapterCommand(),
             ["test-manifest", ..] => TestManifestCommand(args[1..]),
             ["repl"] => ReplCommand(),
@@ -1026,6 +1027,31 @@ public static class Program
             TestTier.Compatibility => isCompatibility,
             _ => true,
         };
+    }
+
+    static int VersionDetectCommand()
+    {
+        var (graph, _, exitCode) = BuildGraphForRepo();
+        if (graph == null || exitCode != 0)
+            return exitCode;
+
+        Console.Error.WriteLine("Detecting NBGV-managed versions...");
+        var result = titi.Versioning.VersionDetector.Detect(graph);
+
+        var output = new titi.Serialization.VersionDetectOutput(
+            Projects: result.Projects.Select(p => new titi.Serialization.ProjectVersionEntry(
+                PackageId: p.PackageId,
+                CurrentVersion: p.CurrentVersion,
+                IsManaged: p.IsManaged
+            )).ToArray(),
+            ManagedCount: result.ManagedCount,
+            UnmanagedCount: result.UnmanagedCount
+        );
+
+        Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(
+            output,
+            titi.Serialization.TitiJsonContext.Default.VersionDetectOutput));
+        return 0;
     }
 
     static int TestarudaAdapterCommand()

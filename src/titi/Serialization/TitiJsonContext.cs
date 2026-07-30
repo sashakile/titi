@@ -80,6 +80,22 @@ public record EdgeEntry(
 /// <summary>DTO for a line range within an edge.</summary>
 public record LineRangeEntry(int Start, int End);
 
+// ── Version command DTOs (Core.cs/Versioning.cs) ────────────────
+
+/// <summary>DTO for a single project version entry.</summary>
+public record ProjectVersionEntry(
+    string PackageId,
+    string? CurrentVersion,
+    bool IsManaged
+);
+
+/// <summary>DTO for version detect command output.</summary>
+public record VersionDetectOutput(
+    ProjectVersionEntry[] Projects,
+    int ManagedCount,
+    int UnmanagedCount
+);
+
 // ── Source-generated context ───────────────────────────────────
 
 /// <summary>
@@ -110,6 +126,10 @@ public record LineRangeEntry(int Start, int End);
 [JsonSerializable(typeof(EdgeEntry))]
 [JsonSerializable(typeof(EdgeEntry[]))]
 [JsonSerializable(typeof(LineRangeEntry))]
+// Version command DTOs
+[JsonSerializable(typeof(ProjectVersionEntry))]
+[JsonSerializable(typeof(ProjectVersionEntry[]))]
+[JsonSerializable(typeof(VersionDetectOutput))]
 internal partial class TitiJsonContext : JsonSerializerContext
 {
 }
