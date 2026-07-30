@@ -105,3 +105,145 @@ public class VersioningTests
         Assert.Equal(2, result.UnmanagedCount);
     }
 }
+
+public class CpmDetectionTests
+{
+    [Fact]
+    public void Detect_NoDirectoryPackagesProps_ReturnsDefault()
+    {
+        var tmpDir = Path.Combine(Path.GetTempPath(), "titi-test-" + Guid.NewGuid());
+        try
+        {
+            Directory.CreateDirectory(tmpDir);
+            var result = titi.Versioning.CpmDetector.Detect(tmpDir);
+
+            Assert.False(result.Enabled);
+            Assert.False(result.HasPackagesProps);
+            Assert.Null(result.PackagesPropsPath);
+            Assert.NotNull(result.Diagnostic);
+            Assert.Contains("No Directory.Packages.props", result.Diagnostic);
+        }
+        finally
+        {
+            if (Directory.Exists(tmpDir)) Directory.Delete(tmpDir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Detect_WithCpmEnabled_DiscoversCorrectly()
+    {
+        var tmpDir = Path.Combine(Path.GetTempPath(), "titi-test-" + Guid.NewGuid());
+        try
+        {
+            Directory.CreateDirectory(tmpDir);
+            var packagesProps = """
+<Project>
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageVersion Include="Orion.Core.Data" Version="1.0.0" />
+    <PackageVersion Include="Orion.Storage" Version="2.0.0" />
+  </ItemGroup>
+</Project>
+""";
+            File.WriteAllText(Path.Combine(tmpDir, "Directory.Packages.props"), packagesProps);
+
+            var result = titi.Versioning.CpmDetector.Detect(tmpDir);
+
+            Assert.True(result.Enabled);
+            Assert.True(result.HasPackagesProps);
+            Assert.True(result.TransitivePinningEnabled);
+            Assert.NotNull(result.PackagesPropsPath);
+            Assert.Contains("Orion.Core.Data", result.PackageVersions);
+            Assert.Contains("Orion.Storage", result.PackageVersions);
+            Assert.Equal(2, result.PackageVersions.Length);
+            Assert.Null(result.Diagnostic);
+        }
+        finally
+        {
+            if (Directory.Exists(tmpDir)) Directory.Delete(tmpDir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Detect_CpmWithoutTransitivePinning_ReportsDiagnostic()
+    {
+        var tmpDir = Path.Combine(Path.GetTempPath(), "titi-test-" + Guid.NewGuid());
+        try
+        {
+            Directory.CreateDirectory(tmpDir);
+            var packagesProps = """
+<Project>
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+</Project>
+""";
+            File.WriteAllText(Path.Combine(tmpDir, "Directory.Packages.props"), packagesProps);
+
+            var result = titi.Versioning.CpmDetector.Detect(tmpDir);
+
+            Assert.True(result.Enabled);
+            Assert.False(result.TransitivePinningEnabled);
+            Assert.NotNull(result.Diagnostic);
+            Assert.Contains("CentralPackageTransitivePinningEnabled", result.Diagnostic);
+        }
+        finally
+        {
+            if (Directory.Exists(tmpDir)) Directory.Delete(tmpDir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Detect_CpmNotEnabled_ReportsDiagnostic()
+    {
+        var tmpDir = Path.Combine(Path.GetTempPath(), "titi-test-" + Guid.NewGuid());
+        try
+        {
+            Directory.CreateDirectory(tmpDir);
+            var packagesProps = """
+<Project>
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+</Project>
+""";
+            File.WriteAllText(Path.Combine(tmpDir, "Directory.Packages.props"), packagesProps);
+
+            var result = titi.Versioning.CpmDetector.Detect(tmpDir);
+
+            Assert.False(result.Enabled);
+            Assert.True(result.HasPackagesProps);
+            Assert.NotNull(result.Diagnostic);
+            Assert.Contains("ManagePackageVersionsCentrally", result.Diagnostic);
+        }
+        finally
+        {
+            if (Directory.Exists(tmpDir)) Directory.Delete(tmpDir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Detect_MalformedPackagesProps_ReturnsErrorDiagnostic()
+    {
+        var tmpDir = Path.Combine(Path.GetTempPath(), "titi-test-" + Guid.NewGuid());
+        try
+        {
+            Directory.CreateDirectory(tmpDir);
+            File.WriteAllText(Path.Combine(tmpDir, "Directory.Packages.props"), "<not-valid-xml>");
+
+            var result = titi.Versioning.CpmDetector.Detect(tmpDir);
+
+            Assert.False(result.Enabled);
+            Assert.True(result.HasPackagesProps);
+            Assert.NotNull(result.Diagnostic);
+            Assert.Contains("Failed to parse", result.Diagnostic);
+        }
+        finally
+        {
+            if (Directory.Exists(tmpDir)) Directory.Delete(tmpDir, recursive: true);
+        }
+    }
+}

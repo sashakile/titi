@@ -96,6 +96,24 @@ public record VersionDetectOutput(
     int UnmanagedCount
 );
 
+/// <summary>DTO for a single validation issue.</summary>
+public record ValidationIssue(
+    string Severity,
+    string Code,
+    string Message,
+    string Detail,
+    string Location
+);
+
+/// <summary>DTO for version validate command output.</summary>
+public record VersionValidateOutput(
+    bool CpmEnabled,
+    bool TransitivePinningEnabled,
+    bool HasPackagesProps,
+    int PackageVersionCount,
+    ValidationIssue[] Issues
+);
+
 // ── Source-generated context ───────────────────────────────────
 
 /// <summary>
@@ -130,6 +148,10 @@ public record VersionDetectOutput(
 [JsonSerializable(typeof(ProjectVersionEntry))]
 [JsonSerializable(typeof(ProjectVersionEntry[]))]
 [JsonSerializable(typeof(VersionDetectOutput))]
+// Version validate command DTOs
+[JsonSerializable(typeof(ValidationIssue))]
+[JsonSerializable(typeof(ValidationIssue[]))]
+[JsonSerializable(typeof(VersionValidateOutput))]
 internal partial class TitiJsonContext : JsonSerializerContext
 {
 }

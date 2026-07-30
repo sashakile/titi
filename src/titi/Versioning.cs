@@ -5,6 +5,7 @@ namespace titi.Versioning;
 
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Xml.Linq;
 
 /// <summary>NBGV version.json file format (subset relevant to titi).</summary>
 public record NbgvVersionFile(
@@ -29,6 +30,77 @@ public record VersionDetectResult(
     int ManagedCount,
     int UnmanagedCount
 );
+
+public static class CpmDetector
+{
+    /// <summary>Detect Central Package Management (CPM) configuration from the repo root.</summary>
+    public static CpmConfig Detect(string repoRoot)
+    {
+        var packagesPropsPath = Path.Combine(repoRoot, "Directory.Packages.props");
+
+        if (!File.Exists(packagesPropsPath))
+            return CpmConfigDefaults.Instance;
+
+        try
+        {
+            var doc = XDocument.Load(packagesPropsPath);
+            var root = doc.Root;
+            if (root == null)
+                return CpmConfigDefaults.Instance with { Diagnostic = "Directory.Packages.props has no root element" };
+
+            var ns = root.GetDefaultNamespace();
+
+            // Check ManagePackageVersionsCentrally
+            var centrallyManaged = root.Descendants(ns + "ManagePackageVersionsCentrally").FirstOrDefault();
+            var cpmEnabled = centrallyManaged?.Value.Equals("true", StringComparison.OrdinalIgnoreCase) ?? false;
+
+            // Check CentralPackageTransitivePinningEnabled
+            var transitivePinning = root.Descendants(ns + "CentralPackageTransitivePinningEnabled").FirstOrDefault();
+            var pinningEnabled = transitivePinning?.Value.Equals("true", StringComparison.OrdinalIgnoreCase) ?? false;
+
+            // Extract package versions defined in CPM
+            var packageVersions = root.Descendants(ns + "PackageVersion")
+                .Select(pv => pv.Attribute("Include")?.Value)
+                .Where(v => v != null)
+                .Cast<string>()
+                .ToArray();
+
+            var packageVersionOverrides = root.Descendants(ns + "PackageVersionOverride")
+                .Select(pv => pv.Attribute("Include")?.Value)
+                .Where(v => v != null)
+                .Cast<string>()
+                .ToArray();
+
+            var diagnostics = new List<string>();
+            if (!cpmEnabled)
+                diagnostics.Add("ManagePackageVersionsCentrally is not set to true");
+            if (!pinningEnabled)
+                diagnostics.Add("CentralPackageTransitivePinningEnabled is not set to true (recommended for monorepos)");
+
+            return new CpmConfig(
+                Enabled: cpmEnabled,
+                TransitivePinningEnabled: pinningEnabled,
+                HasPackagesProps: true,
+                PackagesPropsPath: packagesPropsPath,
+                PackageVersions: packageVersions,
+                PackageVersionOverrides: packageVersionOverrides,
+                Diagnostic: diagnostics.Count > 0 ? string.Join("; ", diagnostics) : null
+            );
+        }
+        catch (Exception ex)
+        {
+            return new CpmConfig(
+                Enabled: false,
+                TransitivePinningEnabled: false,
+                HasPackagesProps: true,
+                PackagesPropsPath: packagesPropsPath,
+                PackageVersions: null,
+                PackageVersionOverrides: null,
+                Diagnostic: $"Failed to parse Directory.Packages.props: {ex.Message}"
+            );
+        }
+    }
+}
 
 public static class VersionDetector
 {

@@ -292,3 +292,30 @@ public record AffectedSet(
     /// <summary>Per-test selection results (populated when test edges are available)</summary>
     public TestSelectionResult[] SelectedTests { get; init; } = [];
 }
+
+// ── CPM (Central Package Management) Domain Types ──────────────
+
+/// <summary>CPM detection result for a repository.</summary>
+public record CpmConfig(
+    bool Enabled,
+    bool TransitivePinningEnabled,
+    bool HasPackagesProps,
+    string? PackagesPropsPath,
+    string[]? PackageVersions,
+    string[]? PackageVersionOverrides,
+    string? Diagnostic
+);
+
+/// <summary>Default CPM config when no Directory.Packages.props exists.</summary>
+public record CpmConfigDefaults
+{
+    public static readonly CpmConfig Instance = new(
+        Enabled: false,
+        TransitivePinningEnabled: false,
+        HasPackagesProps: false,
+        PackagesPropsPath: null,
+        PackageVersions: null,
+        PackageVersionOverrides: null,
+        Diagnostic: "No Directory.Packages.props found — CPM not enabled"
+    );
+}

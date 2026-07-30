@@ -46,6 +46,7 @@ public static class Program
             ["tests", "ingest", ..] => TestsIngestCommand(args[2..]),
             ["tests", "record", ..] => TestsRecordCommand(),
             ["version", "detect", ..] => VersionDetectCommand(),
+            ["version", "validate", ..] => VersionValidateCommand(),
             ["testaruda-adapter", ..] => TestarudaAdapterCommand(),
             ["test-manifest", ..] => TestManifestCommand(args[1..]),
             ["repl"] => ReplCommand(),
@@ -1052,6 +1053,67 @@ public static class Program
             output,
             titi.Serialization.TitiJsonContext.Default.VersionDetectOutput));
         return 0;
+    }
+
+    static int VersionValidateCommand()
+    {
+        var (graph, config, exitCode) = BuildGraphForRepo();
+        if (graph == null || exitCode != 0)
+            return exitCode;
+
+        Console.Error.WriteLine("Validating version configuration...");
+
+        var repoRoot = Path.GetFullPath(Environment.CurrentDirectory);
+        var cpm = titi.Versioning.CpmDetector.Detect(repoRoot);
+
+        var issues = new List<titi.Serialization.ValidationIssue>();
+
+        if (!cpm.Enabled)
+        {
+            issues.Add(new titi.Serialization.ValidationIssue(
+                Severity: "warning",
+                Code: "CPM-001",
+                Message: "Central Package Management (CPM) is not enabled",
+                Detail: cpm.Diagnostic ?? "Add Directory.Packages.props with ManagePackageVersionsCentrally=true",
+                Location: cpm.PackagesPropsPath ?? repoRoot
+            ));
+        }
+
+        if (!cpm.TransitivePinningEnabled && cpm.Enabled)
+        {
+            issues.Add(new titi.Serialization.ValidationIssue(
+                Severity: "warning",
+                Code: "CPM-002",
+                Message: "CentralPackageTransitivePinningEnabled is not enabled",
+                Detail: "Set CentralPackageTransitivePinningEnabled=true in Directory.Packages.props for monorepo transitive version floors",
+                Location: cpm.PackagesPropsPath ?? repoRoot
+            ));
+        }
+
+        if (cpm.Enabled && cpm.PackageVersions != null && cpm.PackageVersions.Length == 0)
+        {
+            issues.Add(new titi.Serialization.ValidationIssue(
+                Severity: "info",
+                Code: "CPM-003",
+                Message: "No PackageVersion entries defined",
+                Detail: "CPM is enabled but no PackageVersion items were found in Directory.Packages.props",
+                Location: cpm.PackagesPropsPath!
+            ));
+        }
+
+        var output = new titi.Serialization.VersionValidateOutput(
+            CpmEnabled: cpm.Enabled,
+            TransitivePinningEnabled: cpm.TransitivePinningEnabled,
+            HasPackagesProps: cpm.HasPackagesProps,
+            PackageVersionCount: cpm.PackageVersions?.Length ?? 0,
+            Issues: issues.ToArray()
+        );
+
+        Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(
+            output,
+            titi.Serialization.TitiJsonContext.Default.VersionValidateOutput));
+
+        return issues.Count > 0 ? 1 : 0;
     }
 
     static int TestarudaAdapterCommand()
