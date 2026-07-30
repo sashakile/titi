@@ -36,7 +36,9 @@ jobs:
 
       - name: Test
         run: |
-          dotnet test test/titi/titi.Tests.csproj --no-build --configuration Release --collect:"XPlat Code Coverage"
+          # Unit tests only — integration tests run separately via integration.yml
+          dotnet test test/titi/titi.Tests.csproj --no-build --configuration Release \
+            --filter "Category!=Integration" --collect:"XPlat Code Coverage"
 
       - name: Pack & validate tool installation
         run: |
