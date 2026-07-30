@@ -104,6 +104,96 @@ public class VersioningTests
         Assert.Equal(0, result.ManagedCount);
         Assert.Equal(2, result.UnmanagedCount);
     }
+
+    [Fact]
+    public void Check_CorrectAssemblyVersion_Passes()
+    {
+        var path = "/repo/src/Orion.Core.Data/Orion.Core.Data.csproj";
+        var node = MakeAvNode(path, "Orion.Core.Data", true, "3.7.2", "3.0.0.0");
+        var graph = MakeGraph((path, node));
+
+        var result = VersionDetector.CheckAssemblyVersions(graph);
+
+        var check = Assert.Single(result);
+        Assert.True(check.IsCorrect);
+        Assert.Equal("3.0.0.0", check.CurrentAssemblyVersion);
+        Assert.Equal("3.0.0.0", check.ExpectedAssemblyVersion);
+    }
+
+    [Fact]
+    public void Check_IncorrectAssemblyVersion_Fails()
+    {
+        var path = "/repo/src/Orion.Core.Data/Orion.Core.Data.csproj";
+        var node = MakeAvNode(path, "Orion.Core.Data", true, "3.7.2", "3.7.2.0");
+        var graph = MakeGraph((path, node));
+
+        var result = VersionDetector.CheckAssemblyVersions(graph);
+
+        var check = Assert.Single(result);
+        Assert.False(check.IsCorrect);
+        Assert.Equal("3.7.2.0", check.CurrentAssemblyVersion);
+        Assert.Equal("3.0.0.0", check.ExpectedAssemblyVersion);
+    }
+
+    [Fact]
+    public void Check_NoAssemblyVersionSet_Passes()
+    {
+        var path = "/repo/src/Orion.Core.Data/Orion.Core.Data.csproj";
+        var node = MakeAvNode(path, "Orion.Core.Data", true, "3.7.2", null);
+        var graph = MakeGraph((path, node));
+
+        var result = VersionDetector.CheckAssemblyVersions(graph);
+
+        var check = Assert.Single(result);
+        Assert.True(check.IsCorrect);
+        Assert.Null(check.CurrentAssemblyVersion);
+        Assert.Equal("3.0.0.0", check.ExpectedAssemblyVersion);
+    }
+
+    [Fact]
+    public void Check_NonPackableProject_Skipped()
+    {
+        var path = "/repo/src/Orion.App/Orion.App.csproj";
+        var node = MakeAvNode(path, "Orion.App", false, "1.0.0", "1.0.0.0");
+        var graph = MakeGraph((path, node));
+
+        var result = VersionDetector.CheckAssemblyVersions(graph);
+        Assert.Empty(result);
+    }
+
+    [Fact]
+    public void Check_MultipleProjects_AllChecked()
+    {
+        var path1 = "/repo/src/Good/Good.csproj";
+        var path2 = "/repo/src/Bad/Bad.csproj";
+        var node1 = MakeAvNode(path1, "Good.Lib", true, "1.2.3", "1.0.0.0");
+        var node2 = MakeAvNode(path2, "Bad.Lib", true, "2.0.1", "2.0.1.0");
+        var graph = MakeGraph((path1, node1), (path2, node2));
+
+        var result = VersionDetector.CheckAssemblyVersions(graph);
+
+        Assert.Equal(2, result.Length);
+        Assert.True(result[0].IsCorrect);
+        Assert.False(result[1].IsCorrect);
+    }
+
+    static GraphNode MakeAvNode(string path, string packageId, bool isPackable, string? version, string? assemblyVersion)
+    {
+        var props = new Dictionary<string, string>();
+        if (version != null) props["Version"] = version;
+        if (assemblyVersion != null) props["AssemblyVersion"] = assemblyVersion;
+
+        var desc = new ProjectDescriptor(
+            Path: path,
+            PackageId: packageId,
+            Version: new SemanticVersion(1, 0, 0, null, null),
+            TargetFrameworks: [new Tfm("net10.0", "net", 10.0)],
+            IsPackable: isPackable,
+            IsTestProject: false,
+            PackageRefs: [], ProjectRefs: [], Properties: props
+        );
+        return new GraphNode(desc, [], [], 0);
+    }
 }
 
 public class CpmDetectionTests

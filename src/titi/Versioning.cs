@@ -102,8 +102,54 @@ public static class CpmDetector
     }
 }
 
+/// <summary>Result of an AssemblyVersion check for a single project.</summary>
+public record AssemblyVersionCheck(
+    string PackageId,
+    string ProjectPath,
+    string? CurrentAssemblyVersion,
+    string? ExpectedAssemblyVersion,
+    bool IsCorrect
+);
+
 public static class VersionDetector
 {
+    /// <summary>Check AssemblyVersion pattern for all projects in the graph.</summary>
+    public static AssemblyVersionCheck[] CheckAssemblyVersions(MonorepoGraph graph)
+    {
+        var checks = new List<AssemblyVersionCheck>();
+
+        foreach (var (path, node) in graph.Nodes)
+        {
+            var proj = node.Project;
+            if (!proj.IsPackable)
+                continue;
+
+            proj.Properties.TryGetValue("AssemblyVersion", out var currentAv);
+            proj.Properties.TryGetValue("Version", out var version);
+
+            // Determine expected AssemblyVersion: major.0.0.0
+            string? expectedAv = null;
+            if (version != null)
+            {
+                var parts = version.Split('.');
+                if (parts.Length > 0 && int.TryParse(parts[0], out var major))
+                    expectedAv = $"{major}.0.0.0";
+            }
+
+            var isCorrect = currentAv == null || (expectedAv != null && currentAv == expectedAv);
+
+            checks.Add(new AssemblyVersionCheck(
+                PackageId: proj.PackageId,
+                ProjectPath: path,
+                CurrentAssemblyVersion: currentAv,
+                ExpectedAssemblyVersion: expectedAv,
+                IsCorrect: isCorrect
+            ));
+        }
+
+        return checks.ToArray();
+    }
+
     /// <summary>Detect NBGV-managed versions for all packable projects in the graph.</summary>
     public static VersionDetectResult Detect(MonorepoGraph graph)
     {

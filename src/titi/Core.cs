@@ -46,7 +46,7 @@ public static class Program
             ["tests", "ingest", ..] => TestsIngestCommand(args[2..]),
             ["tests", "record", ..] => TestsRecordCommand(),
             ["version", "detect", ..] => VersionDetectCommand(),
-            ["version", "validate", ..] => VersionValidateCommand(),
+            ["version", "validate", ..] => VersionValidateCommand(args[2..]),
             ["testaruda-adapter", ..] => TestarudaAdapterCommand(),
             ["test-manifest", ..] => TestManifestCommand(args[1..]),
             ["repl"] => ReplCommand(),
@@ -1055,11 +1055,13 @@ public static class Program
         return 0;
     }
 
-    static int VersionValidateCommand()
+    static int VersionValidateCommand(string[] flags)
     {
         var (graph, config, exitCode) = BuildGraphForRepo();
         if (graph == null || exitCode != 0)
             return exitCode;
+
+        var applyFix = flags.Contains("--fix");
 
         Console.Error.WriteLine("Validating version configuration...");
 
@@ -1099,6 +1101,49 @@ public static class Program
                 Detail: "CPM is enabled but no PackageVersion items were found in Directory.Packages.props",
                 Location: cpm.PackagesPropsPath!
             ));
+        }
+
+        // Check AssemblyVersion patterns
+        var avChecks = titi.Versioning.VersionDetector.CheckAssemblyVersions(graph);
+        foreach (var av in avChecks)
+        {
+            if (!av.IsCorrect)
+            {
+                issues.Add(new titi.Serialization.ValidationIssue(
+                    Severity: "error",
+                    Code: "AV-001",
+                    Message: $"Incorrect AssemblyVersion for {av.PackageId}",
+                    Detail: $"Expected '{av.ExpectedAssemblyVersion}', got '{av.CurrentAssemblyVersion}' — should be {{Major}}.0.0.0",
+                    Location: av.ProjectPath
+                ));
+
+                if (applyFix && av.ExpectedAssemblyVersion != null)
+                {
+                    try
+                    {
+                        var csproj = File.ReadAllText(av.ProjectPath);
+                        if (csproj.Contains("<AssemblyVersion>"))
+                        {
+                            csproj = System.Text.RegularExpressions.Regex.Replace(
+                                csproj,
+                                @"<AssemblyVersion>.*?</AssemblyVersion>",
+                                $"<AssemblyVersion>{av.ExpectedAssemblyVersion}</AssemblyVersion>");
+                        }
+                        else
+                        {
+                            // Insert before closing Project tag
+                            csproj = csproj.Replace("</Project>",
+                                $"  <PropertyGroup>\n    <AssemblyVersion>{av.ExpectedAssemblyVersion}</AssemblyVersion>\n  </PropertyGroup>\n</Project>");
+                        }
+                        File.WriteAllText(av.ProjectPath, csproj);
+                        Console.Error.WriteLine($"Fixed AssemblyVersion for {av.PackageId}: {av.CurrentAssemblyVersion} -> {av.ExpectedAssemblyVersion}");
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.Error.WriteLine($"Failed to fix AssemblyVersion for {av.PackageId}: {ex.Message}");
+                    }
+                }
+            }
         }
 
         var output = new titi.Serialization.VersionValidateOutput(
