@@ -616,9 +616,9 @@ public class StaticEdgeAnalyzerTests
             // Should have at least one edge
             Assert.NotEmpty(edges);
 
-            // Verify L2 weight (800k) is preferred where both would match
-            // The ServiceTests.cs matches via both project reference and using
-            var highWeightEdges = edges.Where(e => e.Weight == 800_000).ToArray();
+            // Verify L3 weight (950k) is preferred — `new Service()` constructor
+            // call is caught by L3's NewTypeRegex, overrides L2/L1 for same pair
+            var highWeightEdges = edges.Where(e => e.Weight == 950_000).ToArray();
             Assert.NotEmpty(highWeightEdges);
         }
         finally
@@ -1097,6 +1097,674 @@ public class StaticEdgeAnalyzerTests
 
             var nsMap = StaticEdgeAnalyzer.BuildNamespaceMap(graph);
             Assert.Empty(nsMap);
+        }
+        finally
+        {
+            CleanupFixtureDir(tearDown);
+        }
+    }
+
+    // ── Level 3: Method call graph ───────────────────────────────
+
+    [Fact]
+    public void Level3_NoTestProjects_ReturnsEmpty()
+    {
+        var graph = MakeGraph([
+            ("/repo/src/Lib/Lib.csproj", "Lib", false),
+        ]);
+
+        var edges = StaticEdgeAnalyzer.AnalyzeMethodCalls(graph, null);
+
+        Assert.Empty(edges);
+    }
+
+    [Fact]
+    public void Level3_NoSourceProjects_ReturnsEmpty()
+    {
+        var graph = MakeGraph([
+            ("/repo/tests/MyTest/MyTest.csproj", "MyTest", true),
+        ]);
+
+        var edges = StaticEdgeAnalyzer.AnalyzeMethodCalls(graph, null);
+
+        Assert.Empty(edges);
+    }
+
+    [Fact]
+    public void Level3_StaticMethodCall_ProducesEdgeToCorrectFile()
+    {
+        var (fixtureDir, tearDown) = CreateFixtureDir();
+        try
+        {
+            var srcDir = Path.Combine(fixtureDir, "src", "Orion.Core.Data");
+            Directory.CreateDirectory(srcDir);
+            File.WriteAllText(Path.Combine(srcDir, "Parser.cs"),
+                """
+                namespace Orion.Core.Data;
+
+                public static class Parser
+                {
+                    public static Foo Parse(string input) => new Foo(1, "a");
+                }
+
+                public record Foo(int Id, string Name);
+                """);
+
+            var testDir = Path.Combine(fixtureDir, "tests", "Orion.UnitTests");
+            Directory.CreateDirectory(testDir);
+            File.WriteAllText(Path.Combine(testDir, "ParserTests.cs"),
+                """
+                using Orion.Core.Data;
+                using Xunit;
+
+                namespace Orion.UnitTests;
+
+                public class ParserTests
+                {
+                    [Fact]
+                    public void TestParse()
+                    {
+                        var foo = Parser.Parse("42:widget");
+                        Assert.NotNull(foo);
+                    }
+                }
+                """);
+
+            var srcProjPath = Path.Combine(srcDir, "Orion.Core.Data.csproj");
+            var testProjPath = Path.Combine(testDir, "Orion.UnitTests.csproj");
+
+            var graph = MakeGraph([
+                (srcProjPath, "Orion.Core.Data", false),
+                (testProjPath, "Orion.UnitTests", true),
+            ]);
+
+            var discoveredTests = new Dictionary<string, TestItem[]>
+            {
+                ["Orion.UnitTests"] = new[]
+                {
+                    new TestItem(
+                        "Orion.UnitTests::Orion.UnitTests.ParserTests.TestParse",
+                        "/asm/Orion.UnitTests.dll",
+                        "Orion.UnitTests.ParserTests",
+                        "TestParse",
+                        TestFramework.Xunit, TestTier.Unit,
+                        Path.Combine(testDir, "ParserTests.cs"),
+                        TestOutcome.None, 0, [])
+                }
+            };
+
+            var edges = StaticEdgeAnalyzer.AnalyzeMethodCalls(graph, discoveredTests);
+
+            Assert.NotEmpty(edges);
+            Assert.All(edges, e => Assert.Equal(EdgeOrigin.Static, e.Origin));
+            Assert.All(edges, e => Assert.Equal(950_000, e.Weight));
+
+            Assert.Contains(edges, e => e.To.Contains("Parser.cs"));
+        }
+        finally
+        {
+            CleanupFixtureDir(tearDown);
+        }
+    }
+
+    [Fact]
+    public void Level3_MultipleMethodCalls_ProducesEdgesToMultipleFiles()
+    {
+        var (fixtureDir, tearDown) = CreateFixtureDir();
+        try
+        {
+            var srcDir = Path.Combine(fixtureDir, "src", "Orion.Services");
+            Directory.CreateDirectory(srcDir);
+
+            File.WriteAllText(Path.Combine(srcDir, "AuthService.cs"),
+                """
+                namespace Orion.Services;
+
+                public static class AuthService
+                {
+                    public static bool ValidateCredentials(string u, string p) => true;
+                    public static string IssueToken(string u) => "tok";
+                }
+                """);
+
+            File.WriteAllText(Path.Combine(srcDir, "Parser.cs"),
+                """
+                namespace Orion.Services;
+
+                public static class Parser
+                {
+                    public static int Parse(string input) => 42;
+                }
+                """);
+
+            var testDir = Path.Combine(fixtureDir, "tests", "Orion.Tests");
+            Directory.CreateDirectory(testDir);
+            File.WriteAllText(Path.Combine(testDir, "CombinedTests.cs"),
+                """
+                using Orion.Services;
+                using Xunit;
+
+                namespace Orion.Tests;
+
+                public class CombinedTests
+                {
+                    [Fact]
+                    public void TestBoth()
+                    {
+                        var result = Parser.Parse("42");
+                        var token = AuthService.IssueToken("alice");
+                        Assert.NotNull(token);
+                    }
+                }
+                """);
+
+            var srcProjPath = Path.Combine(srcDir, "Orion.Services.csproj");
+            var testProjPath = Path.Combine(testDir, "Orion.Tests.csproj");
+
+            var graph = MakeGraph([
+                (srcProjPath, "Orion.Services", false),
+                (testProjPath, "Orion.Tests", true),
+            ]);
+
+            var discoveredTests = new Dictionary<string, TestItem[]>
+            {
+                ["Orion.Tests"] = new[]
+                {
+                    new TestItem(
+                        "Orion.Tests::Orion.Tests.CombinedTests.TestBoth",
+                        "/asm/Orion.Tests.dll",
+                        "Orion.Tests.CombinedTests",
+                        "TestBoth",
+                        TestFramework.Xunit, TestTier.Unit,
+                        Path.Combine(testDir, "CombinedTests.cs"),
+                        TestOutcome.None, 0, [])
+                }
+            };
+
+            var edges = StaticEdgeAnalyzer.AnalyzeMethodCalls(graph, discoveredTests);
+
+            Assert.NotEmpty(edges);
+            Assert.Contains(edges, e => e.To.Contains("Parser.cs"));
+            Assert.Contains(edges, e => e.To.Contains("AuthService.cs"));
+        }
+        finally
+        {
+            CleanupFixtureDir(tearDown);
+        }
+    }
+
+    [Fact]
+    public void Level3_ConstructorCall_ProducesEdge()
+    {
+        var (fixtureDir, tearDown) = CreateFixtureDir();
+        try
+        {
+            var srcDir = Path.Combine(fixtureDir, "src", "Orion.Storage");
+            Directory.CreateDirectory(srcDir);
+            File.WriteAllText(Path.Combine(srcDir, "Repository.cs"),
+                """
+                namespace Orion.Storage;
+
+                public class Repository
+                {
+                    public void Save(string key, string value) { }
+                    public string? Load(string key) => null;
+                }
+                """);
+
+            var testDir = Path.Combine(fixtureDir, "tests", "Orion.Tests");
+            Directory.CreateDirectory(testDir);
+            File.WriteAllText(Path.Combine(testDir, "RepoTest.cs"),
+                """
+                using Orion.Storage;
+                using Xunit;
+
+                namespace Orion.Tests;
+
+                public class RepoTest
+                {
+                    [Fact]
+                    public void TestNewRepo()
+                    {
+                        var repo = new Repository();
+                        Assert.NotNull(repo);
+                    }
+                }
+                """);
+
+            var srcProjPath = Path.Combine(srcDir, "Orion.Storage.csproj");
+            var testProjPath = Path.Combine(testDir, "Orion.Tests.csproj");
+
+            var graph = MakeGraph([
+                (srcProjPath, "Orion.Storage", false),
+                (testProjPath, "Orion.Tests", true),
+            ]);
+
+            var discoveredTests = new Dictionary<string, TestItem[]>
+            {
+                ["Orion.Tests"] = new[]
+                {
+                    new TestItem(
+                        "Orion.Tests::Orion.Tests.RepoTest.TestNewRepo",
+                        "/asm/Orion.Tests.dll",
+                        "Orion.Tests.RepoTest",
+                        "TestNewRepo",
+                        TestFramework.Xunit, TestTier.Unit,
+                        Path.Combine(testDir, "RepoTest.cs"),
+                        TestOutcome.None, 0, [])
+                }
+            };
+
+            var edges = StaticEdgeAnalyzer.AnalyzeMethodCalls(graph, discoveredTests);
+
+            Assert.NotEmpty(edges);
+            Assert.Contains(edges, e => e.To.Contains("Repository.cs"));
+        }
+        finally
+        {
+            CleanupFixtureDir(tearDown);
+        }
+    }
+
+    [Fact]
+    public void Level3_NoMatchingCalls_ReturnsEmpty()
+    {
+        var (fixtureDir, tearDown) = CreateFixtureDir();
+        try
+        {
+            var srcDir = Path.Combine(fixtureDir, "src", "MyLib");
+            Directory.CreateDirectory(srcDir);
+            File.WriteAllText(Path.Combine(srcDir, "Service.cs"),
+                """
+                namespace MyLib;
+                public class Service
+                {
+                    public void DoWork() { }
+                }
+                """);
+
+            var testDir = Path.Combine(fixtureDir, "tests", "MyLib.Tests");
+            Directory.CreateDirectory(testDir);
+            File.WriteAllText(Path.Combine(testDir, "ServiceTests.cs"),
+                """
+                using Xunit;
+                namespace MyLib.Tests;
+                public class ServiceTests
+                {
+                    [Fact]
+                    public void Test1()
+                    {
+                        Assert.True(true);
+                    }
+                }
+                """);
+
+            var srcProjPath = Path.Combine(srcDir, "MyLib.csproj");
+            var testProjPath = Path.Combine(testDir, "MyLib.Tests.csproj");
+
+            var graph = MakeGraph([
+                (srcProjPath, "MyLib", false),
+                (testProjPath, "MyLib.Tests", true),
+            ]);
+
+            var discoveredTests = new Dictionary<string, TestItem[]>
+            {
+                ["MyLib.Tests"] = new[]
+                {
+                    new TestItem(
+                        "MyLib.Tests::MyLib.Tests.ServiceTests.Test1",
+                        "/asm/MyLib.Tests.dll",
+                        "MyLib.Tests.ServiceTests",
+                        "Test1",
+                        TestFramework.Xunit, TestTier.Unit,
+                        Path.Combine(testDir, "ServiceTests.cs"),
+                        TestOutcome.None, 0, [])
+                }
+            };
+
+            var edges = StaticEdgeAnalyzer.AnalyzeMethodCalls(graph, discoveredTests);
+
+            Assert.Empty(edges);
+        }
+        finally
+        {
+            CleanupFixtureDir(tearDown);
+        }
+    }
+
+    [Fact]
+    public void Level3_EmptyGraph_ReturnsEmpty()
+    {
+        var graph = MakeGraph([]);
+        var edges = StaticEdgeAnalyzer.AnalyzeMethodCalls(graph, null);
+        Assert.Empty(edges);
+    }
+
+    // ── BuildMethodMap ───────────────────────────────────────────
+
+    [Fact]
+    public void BuildMethodMap_ExtractsMethodNames()
+    {
+        var (fixtureDir, tearDown) = CreateFixtureDir();
+        try
+        {
+            var srcDir = Path.Combine(fixtureDir, "src", "MyLib");
+            Directory.CreateDirectory(srcDir);
+            File.WriteAllText(Path.Combine(srcDir, "Service.cs"),
+                """
+                namespace MyLib;
+                public class Service
+                {
+                    public void DoWork() { }
+                    public static string GetName() => "svc";
+                    internal int Calculate() => 42;
+                }
+                """);
+
+            var srcProjPath = Path.Combine(srcDir, "MyLib.csproj");
+            var graph = MakeGraph([
+                (srcProjPath, "MyLib", false),
+            ]);
+
+            var methodMap = StaticEdgeAnalyzer.BuildMethodMap(graph);
+
+            Assert.Contains("DoWork", methodMap);
+            Assert.Contains("GetName", methodMap);
+            Assert.Contains("Calculate", methodMap);
+        }
+        finally
+        {
+            CleanupFixtureDir(tearDown);
+        }
+    }
+
+    [Fact]
+    public void BuildMethodMap_NoSourceFiles_ReturnsEmpty()
+    {
+        var (fixtureDir, tearDown) = CreateFixtureDir();
+        try
+        {
+            var srcDir = Path.Combine(fixtureDir, "src", "EmptyLib");
+            Directory.CreateDirectory(srcDir);
+
+            var srcProjPath = Path.Combine(srcDir, "EmptyLib.csproj");
+            var graph = MakeGraph([
+                (srcProjPath, "EmptyLib", false),
+            ]);
+
+            var methodMap = StaticEdgeAnalyzer.BuildMethodMap(graph);
+            Assert.Empty(methodMap);
+        }
+        finally
+        {
+            CleanupFixtureDir(tearDown);
+        }
+    }
+
+    // ── BuildTypeMap ─────────────────────────────────────────────
+
+    [Fact]
+    public void BuildTypeMap_ExtractsTypeNames()
+    {
+        var (fixtureDir, tearDown) = CreateFixtureDir();
+        try
+        {
+            var srcDir = Path.Combine(fixtureDir, "src", "MyLib");
+            Directory.CreateDirectory(srcDir);
+            File.WriteAllText(Path.Combine(srcDir, "Service.cs"),
+                """
+                namespace MyLib;
+                public class Service { }
+                public record Foo(int Id);
+                """);
+
+            var srcProjPath = Path.Combine(srcDir, "MyLib.csproj");
+            var graph = MakeGraph([
+                (srcProjPath, "MyLib", false),
+            ]);
+
+            var typeMap = StaticEdgeAnalyzer.BuildTypeMap(graph);
+
+            Assert.Contains("Service", typeMap);
+            Assert.Contains("Foo", typeMap);
+        }
+        finally
+        {
+            CleanupFixtureDir(tearDown);
+        }
+    }
+
+    [Fact]
+    public void BuildTypeMap_NoSourceFiles_ReturnsEmpty()
+    {
+        var (fixtureDir, tearDown) = CreateFixtureDir();
+        try
+        {
+            var srcDir = Path.Combine(fixtureDir, "src", "EmptyLib");
+            Directory.CreateDirectory(srcDir);
+
+            var srcProjPath = Path.Combine(srcDir, "EmptyLib.csproj");
+            var graph = MakeGraph([
+                (srcProjPath, "EmptyLib", false),
+            ]);
+
+            var typeMap = StaticEdgeAnalyzer.BuildTypeMap(graph);
+            Assert.Empty(typeMap);
+        }
+        finally
+        {
+            CleanupFixtureDir(tearDown);
+        }
+    }
+
+    // ── ParseMethodCalls ─────────────────────────────────────────
+
+    [Fact]
+    public void ParseMethodCalls_FindsStaticMethodCall()
+    {
+        var (fixtureDir, tearDown) = CreateFixtureDir();
+        try
+        {
+            var testFile = Path.Combine(fixtureDir, "test.cs");
+            File.WriteAllText(testFile,
+                """
+                using Xunit;
+                namespace Tests;
+                public class Test
+                {
+                    [Fact]
+                    public void Test1()
+                    {
+                        var result = Parser.Parse("input");
+                        Assert.NotNull(result);
+                    }
+                }
+                """);
+
+            var methodToFiles = new Dictionary<string, HashSet<string>>
+            {
+                ["Parse"] = new HashSet<string> { "/repo/src/Lib/Parser.cs" }
+            };
+            var classToFiles = new Dictionary<string, HashSet<string>>
+            {
+                ["Parser"] = new HashSet<string> { "/repo/src/Lib/Parser.cs" }
+            };
+
+            var matched = StaticEdgeAnalyzer.ParseMethodCalls(testFile, methodToFiles, classToFiles);
+
+            Assert.Contains("/repo/src/Lib/Parser.cs", matched);
+        }
+        finally
+        {
+            CleanupFixtureDir(tearDown);
+        }
+    }
+
+    [Fact]
+    public void ParseMethodCalls_FindsNewTypeCall()
+    {
+        var (fixtureDir, tearDown) = CreateFixtureDir();
+        try
+        {
+            var testFile = Path.Combine(fixtureDir, "test.cs");
+            File.WriteAllText(testFile,
+                """
+                using Xunit;
+                namespace Tests;
+                public class Test
+                {
+                    [Fact]
+                    public void Test1()
+                    {
+                        var repo = new Repository();
+                        Assert.NotNull(repo);
+                    }
+                }
+                """);
+
+            var methodToFiles = new Dictionary<string, HashSet<string>>();
+            var classToFiles = new Dictionary<string, HashSet<string>>
+            {
+                ["Repository"] = new HashSet<string> { "/repo/src/Lib/Repository.cs" }
+            };
+
+            var matched = StaticEdgeAnalyzer.ParseMethodCalls(testFile, methodToFiles, classToFiles);
+
+            Assert.Contains("/repo/src/Lib/Repository.cs", matched);
+        }
+        finally
+        {
+            CleanupFixtureDir(tearDown);
+        }
+    }
+
+    [Fact]
+    public void ParseMethodCalls_NoMatches_ReturnsEmpty()
+    {
+        var (fixtureDir, tearDown) = CreateFixtureDir();
+        try
+        {
+            var testFile = Path.Combine(fixtureDir, "test.cs");
+            File.WriteAllText(testFile,
+                """
+                using Xunit;
+                namespace Tests;
+                public class Test
+                {
+                    [Fact]
+                    public void Test1()
+                    {
+                        Assert.True(true);
+                    }
+                }
+                """);
+
+            var methodToFiles = new Dictionary<string, HashSet<string>>
+            {
+                ["Parse"] = new HashSet<string> { "/repo/src/Lib/Parser.cs" }
+            };
+            var classToFiles = new Dictionary<string, HashSet<string>>
+            {
+                ["Parser"] = new HashSet<string> { "/repo/src/Lib/Parser.cs" }
+            };
+
+            var matched = StaticEdgeAnalyzer.ParseMethodCalls(testFile, methodToFiles, classToFiles);
+
+            Assert.Empty(matched);
+        }
+        finally
+        {
+            CleanupFixtureDir(tearDown);
+        }
+    }
+
+    [Fact]
+    public void ParseMethodCalls_UnreadableFile_ReturnsEmpty()
+    {
+        var matched = StaticEdgeAnalyzer.ParseMethodCalls(
+            "/nonexistent/file.cs",
+            new Dictionary<string, HashSet<string>>(),
+            new Dictionary<string, HashSet<string>>());
+        Assert.Empty(matched);
+    }
+
+    // ── AnalyzeAll with L3 (merge) ───────────────────────────────
+
+    [Fact]
+    public void AnalyzeAll_L3PreferredOverL2AndL1()
+    {
+        var (fixtureDir, tearDown) = CreateFixtureDir();
+        try
+        {
+            var srcDir = Path.Combine(fixtureDir, "src", "MyLib");
+            Directory.CreateDirectory(srcDir);
+            File.WriteAllText(Path.Combine(srcDir, "Service.cs"),
+                """
+                namespace MyLib;
+                public static class Service
+                {
+                    public static string GetName() => "svc";
+                }
+                """);
+            File.WriteAllText(Path.Combine(srcDir, "Other.cs"),
+                """
+                namespace MyLib;
+                public static class Other
+                {
+                    public static int Calculate() => 42;
+                }
+                """);
+
+            var testDir = Path.Combine(fixtureDir, "tests", "MyLib.Tests");
+            Directory.CreateDirectory(testDir);
+            File.WriteAllText(Path.Combine(testDir, "ServiceTests.cs"),
+                """
+                using MyLib;
+                using Xunit;
+                namespace MyLib.Tests;
+                public class ServiceTests
+                {
+                    [Fact]
+                    public void TestGetName()
+                    {
+                        var name = Service.GetName();
+                        Assert.NotNull(name);
+                    }
+                }
+                """);
+
+            var srcProjPath = Path.Combine(srcDir, "MyLib.csproj");
+            var testProjPath = Path.Combine(testDir, "MyLib.Tests.csproj");
+
+            var graph = MakeGraph([
+                (srcProjPath, "MyLib", false),
+                (testProjPath, "MyLib.Tests", true),
+            ], dependencies: [
+                (testProjPath, srcProjPath),
+            ]);
+
+            var discoveredTests = new Dictionary<string, TestItem[]>
+            {
+                ["MyLib.Tests"] = new[]
+                {
+                    new TestItem(
+                        "MyLib.Tests::MyLib.Tests.ServiceTests.TestGetName",
+                        "/asm/MyLib.Tests.dll",
+                        "MyLib.Tests.ServiceTests",
+                        "TestGetName",
+                        TestFramework.Xunit, TestTier.Unit,
+                        Path.Combine(testDir, "ServiceTests.cs"),
+                        TestOutcome.None, 0, [])
+                }
+            };
+
+            var edges = StaticEdgeAnalyzer.AnalyzeAll(graph, discoveredTests);
+
+            Assert.Contains(edges, e => e.To.Contains("Service.cs"));
+
+            var l3Weights = edges.Where(e => e.Weight == 950_000).ToArray();
+            Assert.NotEmpty(l3Weights);
+            Assert.All(l3Weights, e => Assert.Contains("Service.cs", e.To));
         }
         finally
         {

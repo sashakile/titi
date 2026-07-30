@@ -1,24 +1,26 @@
-// TID-0ej: Pure static dependency edge analysis
+// TID-ov7: Level 3 — Method-level call graph for static edge analysis
 //
-// Produces test→source edges without running tests. Two levels:
+// Produces test→source edges without running tests. Three levels:
 //   Level 1 — Project references (.csproj <ProjectReference>) — test method × source file cross-product
 //   Level 2 — Using statement analysis — test file × source file based on namespace match
+//   Level 3 — Method call graph — test method × source file based on method call resolution
 //
 // Level 1 is an over-approximation (every test method in a project gets edges
-// to every source file in every referenced project), while Level 2 is more
-// precise (only test files whose using-directives match a source project's
-// namespace get edges to that project's source files).
+// to every source file in every referenced project). Level 2 is more precise
+// (only test files whose using-directives match a source project's namespace
+// get edges to that project's source files). Level 3 is the most precise:
+// only source files containing methods that are actually called from test code
+// get edges.
 //
-// SAFE-001: Both levels over-approximate (never miss a real dependency) —
-// a test file that uses a type from a referenced project always has either a
-// project reference (L1) or a using directive (L2).
+// SAFE-001: All levels over-approximate (never miss a real dependency).
 //
 // Edge weights (lower than coverage edges at 1_000_000 in EdgeBuilder.cs):
 //   L1: 500_000 — project reference cross-product
 //   L2: 800_000 — using-statement match (more precise, higher weight)
+//   L3: 950_000 — method call resolution (most precise, highest weight)
 //
 // When no test items are available (discoveredTests is null/empty), edges use
-// synthetic From prefixes: "$pkg:{PackageId}" for L1, "$file:{path}" for L2.
+// synthetic From prefixes: "$pkg:{PackageId}" for L1, "$file:{path}" for L2/L3.
 
 namespace titi;
 
@@ -27,7 +29,6 @@ using System.Text.RegularExpressions;
 public static class StaticEdgeAnalyzer
 {
     // Regex for `using Namespace;` or `using static Namespace.Type;`
-    // Captures the namespace portion before the optional .Type suffix for static using.
     private static readonly Regex UsingRegex = new(
         @"^\s*using\s+(?:static\s+)?([^;]+?)(?:\s*;)\s*$",
         RegexOptions.Compiled | RegexOptions.Multiline);
@@ -37,17 +38,46 @@ public static class StaticEdgeAnalyzer
         @"^\s*namespace\s+([^\s{;]+)(?:\s*[\{;])?\s*$",
         RegexOptions.Compiled | RegexOptions.Multiline);
 
-    // Weight hierarchy: coverage edges (EdgeBuilder) = 1_000_000 > L2 = 800_000 > L1 = 500_000
+    // Regex for method declarations: `public [static] ReturnType MethodName(`
+    // Captures the method name. Handles access modifiers, static, override,
+    // virtual, abstract, and generic return types.
+    private static readonly Regex MethodDeclRegex = new(
+        @"\b(?:public|internal|private|protected)\s+" +
+        @"(?:static\s+)?" +
+        @"(?:override\s+|virtual\s+|abstract\s+)?" +
+        @"[\w\?\[\],<>~`]+\s+" +
+        @"(\w+)\s*\(",
+        RegexOptions.Compiled | RegexOptions.Multiline);
+
+    // Regex for class/record/struct declarations: `public [static] class ClassName`
+    private static readonly Regex TypeDeclRegex = new(
+        @"\b(?:public|internal|private|protected)?\s*(?:static\s+)?(?:class|record|struct)\s+(\w+)",
+        RegexOptions.Compiled | RegexOptions.Multiline);
+
+    // Regex for method calls in test code: `TypeName.MethodName(`
+    // Matches identifier-pairs where the first starts with uppercase (type name by convention).
+    // Also matches `new TypeName(` for constructor calls.
+    private static readonly Regex MethodCallRegex = new(
+        @"\b([A-Z]\w*)\.(\w+)\s*\(",
+        RegexOptions.Compiled | RegexOptions.Multiline);
+
+    private static readonly Regex NewTypeRegex = new(
+        @"\bnew\s+([A-Z]\w*)\s*\(",
+        RegexOptions.Compiled | RegexOptions.Multiline);
+
+    // Weight hierarchy: coverage edges (EdgeBuilder) = 1_000_000 > L3 > L2 > L1
     private const long WeightL1ProjectRefs = 500_000;
     private const long WeightL2UsingStatements = 800_000;
+    private const long WeightL3MethodCalls = 950_000;
 
     /// <summary>
-    /// Run both levels of static analysis and return merged edges.
+    /// Run all three levels of static analysis and return merged edges.
     /// When <paramref name="discoveredTests"/> is null or empty, returns
-    /// synthetic edges prefixed with <c>$pkg:</c> (L1) or <c>$file:</c> (L2)
+    /// synthetic edges prefixed with <c>$pkg:</c> (L1) or <c>$file:</c> (L2/L3)
     /// — no test-method granularity.
-    /// Level 2 (using-statements) is preferred over Level 1 (project-refs)
-    /// when both produce the same (From, To) pair — deduplicated via HashSet.
+    ///
+    /// Merge priority: L3 (most precise) > L2 > L1 (over-approximation).
+    /// Higher-weight edges win for the same (From, To) pair.
     /// </summary>
     public static TestToSourceEdge[] AnalyzeAll(
         MonorepoGraph graph,
@@ -58,11 +88,19 @@ public static class StaticEdgeAnalyzer
 
         var l1Edges = AnalyzeProjectReferences(graph, discoveredTests);
         var l2Edges = AnalyzeUsingStatements(graph, discoveredTests);
+        var l3Edges = AnalyzeMethodCalls(graph, discoveredTests);
 
-        // Merge: L2 is more precise, so emit L2 edges first; L1 edges
-        // fill in gaps for (From, To) pairs that L2 didn't cover.
+        // Merge: L3 > L2 > L1 priority. Emit in order of decreasing precision
+        // so higher-weight edges win for the same (From, To) pair.
         var edgeSet = new HashSet<(string From, string To)>();
-        var result = new List<TestToSourceEdge>(l2Edges.Length + l1Edges.Length);
+        var result = new List<TestToSourceEdge>(
+            l3Edges.Length + l2Edges.Length + l1Edges.Length);
+
+        foreach (var edge in l3Edges)
+        {
+            if (edgeSet.Add((edge.From, edge.To)))
+                result.Add(edge);
+        }
 
         foreach (var edge in l2Edges)
         {
@@ -285,7 +323,263 @@ public static class StaticEdgeAnalyzer
         return result.ToArray();
     }
 
-    // ── Helpers ──────────────────────────────────────────────────
+    // ── Level 3: Method call graph ───────────────────────────────
+
+    /// <summary>
+    /// Parse method calls in test code and map them to source files containing
+    /// the called method. Uses regex-based approach:
+    ///
+    /// 1. Build a method→source-file map from source projects (parse method
+    ///    declarations like <c>public static ReturnType MethodName(...)</c>).
+    /// 2. Build a class→source-file map from source projects (parse class,
+    ///    record, struct declarations).
+    /// 3. Scan test source files for <c>TypeName.MethodName(</c> patterns
+    ///    (uppercase-starting type name by convention) and <c>new TypeName(</c>
+    ///    constructor calls.
+    /// 4. Match against the method/class maps and emit precise edges.
+    ///
+    /// Instance method calls on variables (e.g., <c>repo.Save(...)</c>) are not
+    /// resolved by this level — they fall through to L2 namespace matching.
+    ///
+    /// When <paramref name="discoveredTests"/> is null or empty, uses
+    /// synthetic file-level identifiers prefixed with "$file:".
+    /// </summary>
+    public static TestToSourceEdge[] AnalyzeMethodCalls(
+        MonorepoGraph graph,
+        Dictionary<string, TestItem[]>? discoveredTests)
+    {
+        var result = new List<TestToSourceEdge>();
+
+        // Build method→file and class→file maps from source projects
+        var methodToFiles = BuildMethodMap(graph);
+        var classToFiles = BuildTypeMap(graph);
+        if (methodToFiles.Count == 0 && classToFiles.Count == 0)
+            return [];
+
+        foreach (var (testProjectPath, testNode) in graph.Nodes)
+        {
+            if (!testNode.Project.IsTestProject)
+                continue;
+
+            var testPkgId = testNode.Project.PackageId;
+            var testItems = discoveredTests?.GetValueOrDefault(testPkgId);
+
+            // Scan test source files for method calls
+            var testDir = Path.GetDirectoryName(testProjectPath) ?? "";
+            var testCsFiles = EnumerateSourceFiles(testDir);
+
+            if (testCsFiles.Length == 0)
+                continue;
+
+            // Build call→files map per test source file
+            var testFileSrcFiles = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
+            foreach (var testFile in testCsFiles)
+            {
+                var matchedSrcFiles = ParseMethodCalls(testFile, methodToFiles, classToFiles);
+                if (matchedSrcFiles.Count > 0)
+                    testFileSrcFiles[testFile] = matchedSrcFiles;
+            }
+
+            if (testFileSrcFiles.Count == 0)
+                continue;
+
+            if (testItems != null && testItems.Length > 0)
+            {
+                // Method-level edges: for each test item, find which test
+                // source file it belongs to, then emit edges to matched sources.
+                foreach (var item in testItems)
+                {
+                    var matchedFile = FindTestFileForItem(item, testCsFiles, testDir);
+
+                    if (matchedFile == null || !testFileSrcFiles.TryGetValue(matchedFile, out var matchedSrcFiles))
+                        continue;
+
+                    foreach (var srcFile in matchedSrcFiles)
+                    {
+                        result.Add(new TestToSourceEdge(
+                            From: item.TestId,
+                            To: srcFile,
+                            Origin: EdgeOrigin.Static,
+                            Weight: WeightL3MethodCalls,
+                            LineRanges: []
+                        ));
+                    }
+                }
+            }
+            else
+            {
+                // File-level edges (no test-item granularity)
+                foreach (var (testFile, matchedSrcFiles) in testFileSrcFiles)
+                {
+                    foreach (var srcFile in matchedSrcFiles)
+                    {
+                        result.Add(new TestToSourceEdge(
+                            From: $"$file:{testFile}",
+                            To: srcFile,
+                            Origin: EdgeOrigin.Static,
+                            Weight: WeightL3MethodCalls,
+                            LineRanges: []
+                        ));
+                    }
+                }
+            }
+        }
+
+        return result.ToArray();
+    }
+
+    /// <summary>
+    /// Build a map from method name → set of source file paths by scanning
+    /// all source projects' <c>.cs</c> files for method declarations.
+    /// </summary>
+    internal static Dictionary<string, HashSet<string>> BuildMethodMap(MonorepoGraph graph)
+    {
+        var methodToFiles = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
+
+        foreach (var (path, node) in graph.Nodes)
+        {
+            if (node.Project.IsTestProject)
+                continue;
+
+            var projDir = Path.GetDirectoryName(path) ?? "";
+            var csFiles = EnumerateSourceFiles(projDir);
+
+            foreach (var csFile in csFiles)
+            {
+                try
+                {
+                    var content = File.ReadAllText(csFile);
+                    var matches = MethodDeclRegex.Matches(content);
+
+                    foreach (Match m in matches)
+                    {
+                        var methodName = m.Groups[1].Value;
+                        if (!methodToFiles.ContainsKey(methodName))
+                            methodToFiles[methodName] = new HashSet<string>(StringComparer.Ordinal);
+                        methodToFiles[methodName].Add(csFile);
+                    }
+                }
+                catch
+                {
+                    // skip unreadable files
+                }
+            }
+        }
+
+        return methodToFiles;
+    }
+
+    /// <summary>
+    /// Build a map from type name (class/record/struct) → set of source file
+    /// paths by scanning all source projects' <c>.cs</c> files for type declarations.
+    /// </summary>
+    internal static Dictionary<string, HashSet<string>> BuildTypeMap(MonorepoGraph graph)
+    {
+        var typeToFiles = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
+
+        foreach (var (path, node) in graph.Nodes)
+        {
+            if (node.Project.IsTestProject)
+                continue;
+
+            var projDir = Path.GetDirectoryName(path) ?? "";
+            var csFiles = EnumerateSourceFiles(projDir);
+
+            foreach (var csFile in csFiles)
+            {
+                try
+                {
+                    var content = File.ReadAllText(csFile);
+                    var matches = TypeDeclRegex.Matches(content);
+
+                    foreach (Match m in matches)
+                    {
+                        var typeName = m.Groups[1].Value;
+                        if (!typeToFiles.ContainsKey(typeName))
+                            typeToFiles[typeName] = new HashSet<string>(StringComparer.Ordinal);
+                        typeToFiles[typeName].Add(csFile);
+                    }
+                }
+                catch
+                {
+                    // skip unreadable files
+                }
+            }
+        }
+
+        return typeToFiles;
+    }
+
+    /// <summary>
+    /// Parse a C# source file for method call patterns and return the set of
+    /// source file paths that contain the called methods or types.
+    ///
+    /// Matches:
+    ///   - <c>TypeName.MethodName(</c> — static method calls where TypeName
+    ///     starts with uppercase (convention for class types).
+    ///   - <c>new TypeName(</c> — constructor calls.
+    ///
+    /// For each match, looks up the method/type name in the provided maps
+    /// and returns the corresponding source file paths.
+    /// </summary>
+    internal static HashSet<string> ParseMethodCalls(
+        string filePath,
+        Dictionary<string, HashSet<string>> methodToFiles,
+        Dictionary<string, HashSet<string>> classToFiles)
+    {
+        var matchedFiles = new HashSet<string>(StringComparer.Ordinal);
+
+        try
+        {
+            var content = File.ReadAllText(filePath);
+
+            // Match `TypeName.MethodName(` patterns
+            var callMatches = MethodCallRegex.Matches(content);
+            foreach (Match m in callMatches)
+            {
+                var typeName = m.Groups[1].Value;
+                var methodName = m.Groups[2].Value;
+
+                // Look up method name in the method map
+                if (methodToFiles.TryGetValue(methodName, out var methodFiles))
+                {
+                    foreach (var f in methodFiles)
+                        matchedFiles.Add(f);
+                }
+
+                // Also check if the type name is a known class (catches `new TypeName(...)` 
+                // patterns that the constructor regex might miss, or type-qualified calls
+                // where the method name is generic)
+                if (classToFiles.TryGetValue(typeName, out var classFiles))
+                {
+                    foreach (var f in classFiles)
+                        matchedFiles.Add(f);
+                }
+            }
+
+            // Match `new TypeName(` constructor calls (catches cases where
+            // the type is used via constructor but not via static method call)
+            var newMatches = NewTypeRegex.Matches(content);
+            foreach (Match m in newMatches)
+            {
+                var typeName = m.Groups[1].Value;
+
+                if (classToFiles.TryGetValue(typeName, out var classFiles))
+                {
+                    foreach (var f in classFiles)
+                        matchedFiles.Add(f);
+                }
+            }
+        }
+        catch
+        {
+            // skip unreadable files
+        }
+
+        return matchedFiles;
+    }
+
+    // ── Shared Helpers ───────────────────────────────────────────
 
     /// <summary>
     /// Enumerate all <c>.cs</c> files in a project directory, excluding
@@ -433,8 +727,8 @@ public static class StaticEdgeAnalyzer
     /// <summary>
     /// Try to find which test source file a <see cref="TestItem"/> belongs to
     /// by matching the class name against file contents. Returns <c>null</c>
-    /// when no match is found — the caller degrades gracefully (L2 edges
-    /// omitted for that item, L1 edges still apply).
+    /// when no match is found — the caller degrades gracefully (edges omitted
+    /// for that item, other levels still apply).
     /// </summary>
     internal static string? FindTestFileForItem(
         TestItem item,
@@ -475,7 +769,7 @@ public static class StaticEdgeAnalyzer
             }
         }
 
-        // No match found — return null so caller falls back to L1-only coverage
+        // No match found — return null so caller falls back to lower levels
         return null;
     }
 
