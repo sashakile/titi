@@ -22,8 +22,21 @@ public static class SwapEngine
 
         foreach (var target in targets)
         {
-            // Find local source
-            var localSourcePath = Path.Combine(sourceRoot, target, $"{target}.csproj");
+            // Find local source by looking up the actual project path from the graph
+            var projectNode = graph.Nodes.Values.FirstOrDefault(n =>
+                n.Project.PackageId.Equals(target, StringComparison.OrdinalIgnoreCase));
+
+            if (projectNode == null)
+            {
+                retained.Add(new RetainedRef(
+                    PackageId: target,
+                    Reason: RetainedReason.NoLocalSource,
+                    Detail: $"No project with PackageId '{target}' found in graph"
+                ));
+                continue;
+            }
+
+            var localSourcePath = projectNode.Project.Path;
             if (!File.Exists(localSourcePath))
             {
                 retained.Add(new RetainedRef(
@@ -56,9 +69,7 @@ public static class SwapEngine
                 continue;
             }
 
-            var localProjectNode = graph.Nodes.Values.FirstOrDefault(n =>
-                n.Project.PackageId == target);
-            var localVersion = localProjectNode?.Project.Version
+            var localVersion = projectNode.Project.Version
                 ?? new SemanticVersion(1, 0, 0, null, null);
 
             swapped.Add(new SwappedRef(
