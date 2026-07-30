@@ -502,6 +502,13 @@ public static class TestarudaAdapter
                 if (graph == null)
                     return FormatErrorResponse("Graph not available (handshake did not complete)");
                 var edges = LoadEdgesFromCache(graph.RepoRoot);
+                // Fall back to static analysis when no coverage edges exist (TID-0ej).
+                // Static edges are computed from project references and using-statements,
+                // then persisted to the cache for subsequent fast loads.
+                if (edges.Length == 0)
+                {
+                    edges = LoadStaticEdges(graph, discoveredTests);
+                }
                 var history = LoadHistoryFromCache(graph.RepoRoot);
                 return FormatResponse(HandleStaticDeps(
                     graph, request.AffectedProjects, request.ChangedFiles,
@@ -583,6 +590,26 @@ public static class TestarudaAdapter
     {
         var cacheDir = Path.Combine(repoRoot, ".titi", "test-cache");
         return SelectionLoader.LoadEdges(cacheDir);
+    }
+
+    /// <summary>Load or compute static edges as fallback.</summary>
+    static TestToSourceEdge[] LoadStaticEdges(
+        MonorepoGraph graph,
+        Dictionary<string, TestItem[]>? discoveredTests)
+    {
+        var cacheDir = Path.Combine(graph.RepoRoot, ".titi", "test-cache");
+
+        // Try loading persisted static edges first
+        var persisted = StaticEdgeAnalyzer.LoadPersistedStaticEdges(cacheDir);
+        if (persisted.Length > 0)
+            return persisted;
+
+        // Compute fresh static edges and persist them
+        var fresh = StaticEdgeAnalyzer.AnalyzeAll(graph, discoveredTests);
+        if (fresh.Length > 0)
+            StaticEdgeAnalyzer.PersistStaticEdges(cacheDir, fresh);
+
+        return fresh;
     }
 
     /// <summary>Load test-run history from the test-cache.</summary>

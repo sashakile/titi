@@ -191,21 +191,23 @@ public static class Program
         if (edges.Length > 0 && affectedTestProjects.Length > 0)
         {
             Console.Error.WriteLine($"Discovering test items from {affectedTestProjects.Length} affected test project(s)...");
-            foreach (var proj in affectedTestProjects)
+            DiscoverTestItems(affectedTestProjects, repoRoot, cacheDir, allItems);
+        }
+        // Fall back to static analysis when no coverage edges exist (TID-0ej).
+        // Discover test items, compute static edges, and persist them.
+        if (edges.Length == 0 && affectedTestProjects.Length > 0)
+        {
+            Console.Error.WriteLine("No coverage edges found. Falling back to static dependency analysis...");
+            DiscoverTestItems(affectedTestProjects, repoRoot, cacheDir, allItems);
+            if (allItems.Count > 0)
             {
-                var projDir = Path.GetDirectoryName(proj.Path) ?? "";
-                var fingerprint = titi.TestDiscovery.DiscoveryCache.ComputeFingerprint(projDir, proj.Path);
-                var items = titi.TestDiscovery.DiscoveryCache.GetOrDiscover(cacheDir, proj.PackageId, fingerprint, () =>
+                var discoveredTests = GroupTestItemsByPackageId(allItems, affectedTestProjects);
+                edges = StaticEdgeAnalyzer.AnalyzeAll(graph, discoveredTests);
+                if (edges.Length > 0)
                 {
-                    var (stdout, stderr, ok) = RunDotnetListTests(proj.Path, repoRoot);
-                    if (!ok)
-                    {
-                        Console.Error.WriteLine($"  warning: list-tests failed for {proj.PackageId}: {stderr.Split('\n').FirstOrDefault()}");
-                        return [];
-                    }
-                    return titi.TestDiscovery.Parser.Parse(stdout, TestTier.Unit);
-                });
-                allItems.AddRange(items);
+                    StaticEdgeAnalyzer.PersistStaticEdges(cacheDir, edges);
+                    Console.Error.WriteLine($"Computed {edges.Length} static edge(s).");
+                }
             }
         }
 
@@ -619,6 +621,52 @@ public static class Program
         return flat;
     }
 
+    /// <summary>
+    /// Discover test items from affected test projects into <paramref name="allItems"/>.
+    /// Uses DiscoveryCache for caching and fingerprint-based invalidation.
+    /// </summary>
+    static void DiscoverTestItems(
+        ProjectDescriptor[] affectedTestProjects,
+        string repoRoot,
+        string cacheDir,
+        List<TestItem> allItems)
+    {
+        foreach (var proj in affectedTestProjects)
+        {
+            var projDir = Path.GetDirectoryName(proj.Path) ?? "";
+            var fingerprint = titi.TestDiscovery.DiscoveryCache.ComputeFingerprint(projDir, proj.Path);
+            var items = titi.TestDiscovery.DiscoveryCache.GetOrDiscover(cacheDir, proj.PackageId, fingerprint, () =>
+            {
+                var (stdout, stderr, ok) = RunDotnetListTests(proj.Path, repoRoot);
+                if (!ok)
+                {
+                    Console.Error.WriteLine($"  warning: list-tests failed for {proj.PackageId}: {stderr.Split('\n').FirstOrDefault()}");
+                    return [];
+                }
+                return titi.TestDiscovery.Parser.Parse(stdout, TestTier.Unit);
+            });
+            allItems.AddRange(items);
+        }
+    }
+
+    /// <summary>
+    /// Group test items by their project PackageId, extracted from the TestId
+    /// prefix (everything before the first "::" separator). Items without a
+    /// "::" separator are assigned to the first affected project as fallback.
+    /// </summary>
+    static Dictionary<string, TestItem[]> GroupTestItemsByPackageId(
+        List<TestItem> allItems,
+        ProjectDescriptor[] affectedTestProjects)
+    {
+        return allItems
+            .GroupBy(i =>
+            {
+                var sep = i.TestId.IndexOf("::", StringComparison.Ordinal);
+                return sep >= 0 ? i.TestId[..sep] : affectedTestProjects.FirstOrDefault()?.PackageId ?? "";
+            })
+            .ToDictionary(g => g.Key, g => g.ToArray(), StringComparer.Ordinal);
+    }
+
     internal static (bool Ok, string Stdout, string Stderr) RunDotnet(string arguments, string workingDir)
     {
         var result = RunProcess("dotnet", arguments, workingDir, 600_000);
@@ -738,17 +786,36 @@ public static class Program
 
         if (edges.Length == 0)
         {
-            // No edges available: fall back to project-level with warning
-            Console.Error.WriteLine("Warning: no test-to-source edges found. Falling back to project-level Traversal.");
-            Console.Error.WriteLine("  Run 'titi tests record' to build the edge index.");
+            // Fall back to static analysis (TID-0ej)
+            Console.Error.WriteLine("No coverage edges found. Falling back to static dependency analysis...");
+            Console.Error.WriteLine("Discovering test items for static analysis...");
+            var staticAllItems = new List<TestItem>();
+            DiscoverTestItems(affectedTestProjects, repoRoot, cacheDir, staticAllItems);
+            if (staticAllItems.Count > 0)
+            {
+                var discoveredTests = GroupTestItemsByPackageId(staticAllItems, affectedTestProjects);
+                edges = StaticEdgeAnalyzer.AnalyzeAll(graph, discoveredTests);
+                if (edges.Length > 0)
+                {
+                    StaticEdgeAnalyzer.PersistStaticEdges(cacheDir, edges);
+                    Console.Error.WriteLine($"Computed {edges.Length} static edge(s).");
+                }
+            }
 
-            var manifestDir = Path.Combine(repoRoot, ".titi", "manifest");
-            Directory.CreateDirectory(manifestDir);
-            var outputPath = Path.Combine(manifestDir, "test-manifest.proj");
-            var xml = titi.TestManifest.TraversalGenerator.Generate(affectedTestProjects, null);
-            File.WriteAllText(outputPath, xml);
-            Console.Error.WriteLine($"Wrote project-level Traversal to {outputPath}");
-            return 0;
+            if (edges.Length == 0)
+            {
+                // No edges available at all: fall back to project-level with warning
+                Console.Error.WriteLine("Warning: no test-to-source edges found (static or coverage). Falling back to project-level Traversal.");
+                Console.Error.WriteLine("  Run 'titi tests record' to build the coverage edge index.");
+
+                var manifestDir = Path.Combine(repoRoot, ".titi", "manifest");
+                Directory.CreateDirectory(manifestDir);
+                var outputPath = Path.Combine(manifestDir, "test-manifest.proj");
+                var xml = titi.TestManifest.TraversalGenerator.Generate(affectedTestProjects, null);
+                File.WriteAllText(outputPath, xml);
+                Console.Error.WriteLine($"Wrote project-level Traversal to {outputPath}");
+                return 0;
+            }
         }
 
         // Discover test items from affected test projects
