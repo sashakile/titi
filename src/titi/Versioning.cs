@@ -606,6 +606,293 @@ public static class BaselineAcquirer
     }
 }
 
+// ── Cascading Bump Algorithm (VN-07) ────────────────────────────
+
+/// <summary>Read and parse changeset files from the .changesets/ directory.</summary>
+public static class ChangesetReader
+{
+    /// <summary>Read all changeset files from the repository root's .changesets/ directory.</summary>
+    public static (Changeset[] Valid, Changeset[] Invalid) ReadChangesets(string repoRoot)
+    {
+        var changesetsDir = Path.Combine(repoRoot, ".changesets");
+        if (!Directory.Exists(changesetsDir))
+            return ([], []);
+
+        var valid = new List<Changeset>();
+        var invalid = new List<Changeset>();
+
+        foreach (var file in Directory.GetFiles(changesetsDir, "*.yaml"))
+        {
+            try
+            {
+                var content = File.ReadAllText(file);
+                var parsed = ParseChangeset(content, file);
+                if (parsed != null)
+                    valid.Add(parsed);
+                else
+                    invalid.Add(new Changeset("", BumpType.Patch, $"Failed to parse: {file}", file));
+            }
+            catch (Exception ex)
+            {
+                invalid.Add(new Changeset("", BumpType.Patch, $"Error reading {file}: {ex.Message}", file));
+            }
+        }
+
+        return (valid.ToArray(), invalid.ToArray());
+    }
+
+    /// <summary>Parse a single changeset YAML file content.</summary>
+    internal static Changeset? ParseChangeset(string content, string filePath)
+    {
+        var lines = content.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        string? package = null;
+        string? bump = null;
+        string? description = null;
+
+        foreach (var line in lines)
+        {
+            if (line.StartsWith("package:", StringComparison.OrdinalIgnoreCase))
+                package = line["package:".Length..].Trim();
+            else if (line.StartsWith("bump:", StringComparison.OrdinalIgnoreCase))
+                bump = line["bump:".Length..].Trim();
+            else if (line.StartsWith("description:", StringComparison.OrdinalIgnoreCase))
+                description = line["description:".Length..].Trim();
+        }
+
+        if (string.IsNullOrEmpty(package) || string.IsNullOrEmpty(bump))
+            return null;
+
+        var bumpType = bump.ToLowerInvariant() switch
+        {
+            "patch" => BumpType.Patch,
+            "minor" => BumpType.Minor,
+            "major" => BumpType.Major,
+            _ => (BumpType?)null
+        };
+
+        if (bumpType == null)
+            return null;
+
+        return new Changeset(package, bumpType.Value, description ?? "", filePath);
+    }
+
+    /// <summary>Aggregate changesets by package, returning the highest bump per package.</summary>
+    internal static Dictionary<string, BumpType> AggregateByPackage(Changeset[] changesets)
+    {
+        var result = new Dictionary<string, BumpType>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var cs in changesets)
+        {
+            if (result.TryGetValue(cs.Package, out var existing))
+            {
+                // Higher bump wins
+                if ((int)cs.Bump > (int)existing)
+                    result[cs.Package] = cs.Bump;
+            }
+            else
+            {
+                result[cs.Package] = cs.Bump;
+            }
+        }
+
+        return result;
+    }
+}
+
+/// <summary>Compute version plans using the cascading bump algorithm.</summary>
+public static class CascadingBumpEngine
+{
+    /// <summary>
+    /// Compute a version plan for the given graph and changesets.
+    /// Uses ApiCompat when baseline assemblies are available; falls back to BREAKING
+    /// when no baseline exists or the feed is unreachable.
+    /// </summary>
+    public static VersionPlan Compute(
+        MonorepoGraph graph,
+        Dictionary<string, BumpType> packageBumps,
+        Func<string, string, BumpClassification>? apiCompatProvider = null)
+    {
+        var entries = new List<VersionPlanEntry>();
+        var issues = new List<string>();
+
+        // Phase 1: Identify changed packable projects
+        var changedProjects = new Dictionary<string, (BumpType DesiredBump, BumpClassification Classification)>();
+        foreach (var (pkgId, bump) in packageBumps)
+        {
+            // Find the project in the graph
+            var node = graph.Nodes.Values.FirstOrDefault(n =>
+                n.Project.PackageId.Equals(pkgId, StringComparison.OrdinalIgnoreCase));
+
+            if (node == null)
+            {
+                issues.Add($"Changeset references unknown package '{pkgId}' — skipping");
+                continue;
+            }
+
+            if (!node.Project.IsPackable)
+            {
+                issues.Add($"Changeset references non-packable project '{pkgId}' — skipping");
+                continue;
+            }
+
+            // Determine classification via ApiCompat or fallback
+            // Without ApiCompat, treat as Breaking for safety per spec
+            var classification = BumpClassification.Breaking;
+            if (apiCompatProvider != null)
+            {
+                try
+                {
+                    classification = apiCompatProvider(pkgId, "");
+                }
+                catch
+                {
+                    classification = BumpClassification.Breaking;
+                    issues.Add($"ApiCompat failed for '{pkgId}' — treating as BREAKING");
+                }
+            }
+
+            changedProjects[pkgId] = (bump, classification);
+        }
+
+        // Phase 2: Topological propagation
+        var bumpedPackages = new Dictionary<string, (BumpType Bump, BumpClassification Classification, bool IsPropagated)>();
+
+        foreach (var pkgId in graph.TopologicalOrder)
+        {
+            var node = graph.Nodes[pkgId];
+            var pkgNodeId = node.Project.PackageId;
+
+            if (changedProjects.TryGetValue(pkgNodeId, out var change))
+            {
+                // This project has a direct changeset
+                var bump = change.DesiredBump;
+                var classification = change.Classification;
+                bumpedPackages[pkgNodeId] = (bump, classification, false);
+
+                // Propagate to dependents
+                if (classification == BumpClassification.InternalOnly)
+                {
+                    // No propagation for internal-only changes
+                }
+                else
+                {
+                    var propBump = classification == BumpClassification.Breaking ? BumpType.Major : BumpType.Minor;
+                    PropagateBump(graph, pkgNodeId, propBump, bumpedPackages, changedProjects);
+                }
+            }
+        }
+
+        // Phase 3: Build version plan
+        foreach (var (pkgId, info) in bumpedPackages)
+        {
+            var node = graph.Nodes.Values.First(n => n.Project.PackageId == pkgId);
+            var currentVersion = node.Project.Version;
+            var baselineVersion = $"{currentVersion.Major}.{currentVersion.Minor}.{currentVersion.Patch}";
+
+            var newVersion = ApplyBump(baselineVersion, info.Bump);
+
+            entries.Add(new VersionPlanEntry(
+                PackageId: pkgId,
+                BaselineVersion: baselineVersion,
+                NewVersion: newVersion,
+                AppliedBump: info.Bump,
+                Classification: info.Classification,
+                IsPropagated: info.IsPropagated,
+                Diagnostics: null
+            ));
+        }
+
+        return new VersionPlan(
+            Entries: entries.ToArray(),
+            Issues: issues.Count > 0 ? issues.ToArray() : null,
+            HasErrors: issues.Count > 0
+        );
+    }
+
+    /// <summary>Propagate a bump type to direct dependents.</summary>
+    static void PropagateBump(
+        MonorepoGraph graph,
+        string fromPackageId,
+        BumpType bump,
+        Dictionary<string, (BumpType Bump, BumpClassification Classification, bool IsPropagated)> bumpedPackages,
+        Dictionary<string, (BumpType DesiredBump, BumpClassification Classification)> changedProjects)
+    {
+        // Find all direct dependents of this package
+        var fromNode = graph.Nodes.Values.FirstOrDefault(n => n.Project.PackageId == fromPackageId);
+        if (fromNode == null) return;
+
+        var fromPath = fromNode.Project.Path;
+
+        foreach (var (path, node) in graph.Nodes)
+        {
+            // Check if this node depends on the fromPackage
+            var hasDep = node.Project.ProjectRefs.Any(r =>
+            {
+                // Resolve the project ref path to a package ID
+                if (graph.Nodes.TryGetValue(r.Path, out var depNode))
+                    return depNode.Project.PackageId.Equals(fromPackageId, StringComparison.OrdinalIgnoreCase);
+                return false;
+            });
+
+            if (!hasDep) continue;
+
+            var pkgId = node.Project.PackageId;
+
+            // If this node already has a direct changeset, its own bump takes precedence
+            if (changedProjects.ContainsKey(pkgId))
+                continue;
+
+            // If already bumped with a higher or equal bump, skip
+            if (bumpedPackages.TryGetValue(pkgId, out var existing))
+            {
+                if ((int)bump <= (int)existing.Bump)
+                    continue;
+            }
+
+            // Apply the propagated bump
+            var classification = bump == BumpType.Major
+                ? BumpClassification.Breaking
+                : BumpClassification.Additive;
+
+            bumpedPackages[pkgId] = (bump, classification, true);
+
+            // Recurse: this dependent now propagates further
+            PropagateBump(graph, pkgId, bump, bumpedPackages, changedProjects);
+        }
+    }
+
+    /// <summary>Apply a bump type to a version string.</summary>
+    internal static string ApplyBump(string version, BumpType bump)
+    {
+        var parts = version.Split('.');
+        if (parts.Length < 3) return version;
+
+        if (!int.TryParse(parts[0], out var major)) return version;
+        if (!int.TryParse(parts[1], out var minor)) return version;
+        if (!int.TryParse(parts[2], out var patch)) return version;
+
+        return bump switch
+        {
+            BumpType.Major => $"{major + 1}.0.0",
+            BumpType.Minor => $"{major}.{minor + 1}.0",
+            BumpType.Patch => $"{major}.{minor}.{patch + 1}",
+            _ => version
+        };
+    }
+
+    /// <summary>Convert a BumpType to a BumpClassification for propagation.</summary>
+    internal static BumpClassification BumpToClassification(BumpType bump)
+    {
+        return bump switch
+        {
+            BumpType.Major => BumpClassification.Breaking,
+            BumpType.Minor => BumpClassification.Additive,
+            BumpType.Patch => BumpClassification.InternalOnly,
+            _ => BumpClassification.InternalOnly
+        };
+    }
+}
+
 public static class CpmDetector
 {
     /// <summary>Detect Central Package Management (CPM) configuration from the repo root.</summary>

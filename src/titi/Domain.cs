@@ -295,6 +295,45 @@ public record AffectedSet(
 
 // ── CPM (Central Package Management) Domain Types ──────────────
 
+/// <summary>Bump classification for API surface changes.</summary>
+public enum BumpClassification { InternalOnly, Additive, Breaking }
+
+/// <summary>Bump increment types for changeset files.</summary>
+public enum BumpType { Patch, Minor, Major }
+
+/// <summary>A changeset file describing an intentional version bump.</summary>
+public record Changeset(
+    string Package,
+    BumpType Bump,
+    string Description,
+    string FilePath
+);
+
+/// <summary>Result of an API surface comparison between two assemblies.</summary>
+public record ApiCompatResult(
+    BumpClassification Classification,
+    string[]? BreakingChanges,
+    string? Diagnostic
+);
+
+/// <summary>Version plan entry for a single package.</summary>
+public record VersionPlanEntry(
+    string PackageId,
+    string BaselineVersion,
+    string NewVersion,
+    BumpType AppliedBump,
+    BumpClassification Classification,
+    bool IsPropagated,
+    string[]? Diagnostics
+);
+
+/// <summary>Complete version plan for a cascading bump run.</summary>
+public record VersionPlan(
+    VersionPlanEntry[] Entries,
+    string[]? Issues,
+    bool HasErrors
+);
+
 /// <summary>CPM detection result for a repository.</summary>
 public record CpmConfig(
     bool Enabled,

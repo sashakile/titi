@@ -672,3 +672,284 @@ public class BaselineAcquirerTests
         Assert.Equal("1.0.0", result);
     }
 }
+
+public class ChangesetReaderTests
+{
+    [Fact]
+    public void ParseChangeset_ValidContent_ReturnsChangeset()
+    {
+        var content = """
+package: Orion.Core.Data
+bump: minor
+description: Add async overloads
+""";
+        var result = titi.Versioning.ChangesetReader.ParseChangeset(content, "/test.yaml");
+        Assert.NotNull(result);
+        Assert.Equal("Orion.Core.Data", result.Package);
+        Assert.Equal(BumpType.Minor, result.Bump);
+        Assert.Equal("Add async overloads", result.Description);
+    }
+
+    [Fact]
+    public void ParseChangeset_MissingPackage_ReturnsNull()
+    {
+        var content = "bump: minor\ndescription: test";
+        Assert.Null(titi.Versioning.ChangesetReader.ParseChangeset(content, "/test.yaml"));
+    }
+
+    [Fact]
+    public void ParseChangeset_InvalidBump_ReturnsNull()
+    {
+        var content = "package: Test\nbump: critical\ndescription: test";
+        Assert.Null(titi.Versioning.ChangesetReader.ParseChangeset(content, "/test.yaml"));
+    }
+
+    [Fact]
+    public void ParseChangeset_AllBumpTypes_ParsedCorrectly()
+    {
+        var major = titi.Versioning.ChangesetReader.ParseChangeset("package: Test\nbump: major", "/m.yaml");
+        var minor = titi.Versioning.ChangesetReader.ParseChangeset("package: Test\nbump: minor", "/m.yaml");
+        var patch = titi.Versioning.ChangesetReader.ParseChangeset("package: Test\nbump: patch", "/p.yaml");
+        Assert.Equal(BumpType.Major, major!.Bump);
+        Assert.Equal(BumpType.Minor, minor!.Bump);
+        Assert.Equal(BumpType.Patch, patch!.Bump);
+    }
+
+    [Fact]
+    public void AggregateByPackage_SinglePackage_HighestWins()
+    {
+        var changesets = new[]
+        {
+            new Changeset("Orion.Core", BumpType.Patch, "", "/a.yaml"),
+            new Changeset("Orion.Core", BumpType.Minor, "", "/b.yaml"),
+            new Changeset("Orion.Core", BumpType.Major, "", "/c.yaml"),
+        };
+        var result = titi.Versioning.ChangesetReader.AggregateByPackage(changesets);
+        Assert.Equal(BumpType.Major, result["Orion.Core"]);
+    }
+
+    [Fact]
+    public void AggregateByPackage_MultiplePackages_AllPresent()
+    {
+        var changesets = new[]
+        {
+            new Changeset("A", BumpType.Patch, "", "/a.yaml"),
+            new Changeset("B", BumpType.Minor, "", "/b.yaml"),
+        };
+        var result = titi.Versioning.ChangesetReader.AggregateByPackage(changesets);
+        Assert.Equal(BumpType.Patch, result["A"]);
+        Assert.Equal(BumpType.Minor, result["B"]);
+    }
+
+    [Fact]
+    public void AggregateByPackage_EmptyInput_ReturnsEmpty()
+    {
+        var result = titi.Versioning.ChangesetReader.AggregateByPackage([]);
+        Assert.Empty(result);
+    }
+}
+
+public class CascadingBumpEngineTests
+{
+    static GraphNode MakeNode(string path, string packageId, bool isPackable, string[]? projectRefs = null)
+    {
+        var desc = new ProjectDescriptor(
+            Path: path,
+            PackageId: packageId,
+            Version: new SemanticVersion(1, 0, 0, null, null),
+            TargetFrameworks: [new Tfm("net10.0", "net", 10.0)],
+            IsPackable: isPackable,
+            IsTestProject: false,
+            PackageRefs: [],
+            ProjectRefs: (projectRefs ?? []).Select(p => new ProjectRef(p, false)).ToArray(),
+            Properties: []
+        );
+        return new GraphNode(desc, [], [], 0);
+    }
+
+    static MonorepoGraph MakeGraph(params (string Path, GraphNode Node)[] nodes)
+    {
+        var dict = new Dictionary<string, GraphNode>();
+        var order = new List<string>();
+        foreach (var (path, node) in nodes)
+        {
+            dict[path] = node;
+            order.Add(path);
+        }
+        return new MonorepoGraph(
+            Nodes: dict,
+            TopologicalOrder: order.ToArray(),
+            RepoRoot: "/repo",
+            BuiltAt: DateTime.UtcNow,
+            Fingerprints: []
+        );
+    }
+
+    [Fact]
+    public void Compute_NoChangesets_ReturnsEmptyPlan()
+    {
+        var graph = MakeGraph();
+        var plan = titi.Versioning.CascadingBumpEngine.Compute(graph, []);
+        Assert.Empty(plan.Entries);
+        Assert.False(plan.HasErrors);
+    }
+
+    [Fact]
+    public void Compute_SinglePackagePatch_BumpsCorrectly()
+    {
+        var path = "/repo/src/A/A.csproj";
+        var node = MakeNode(path, "A", true);
+        var graph = MakeGraph((path, node));
+        var bumps = new Dictionary<string, BumpType> { ["A"] = BumpType.Patch };
+
+        var plan = titi.Versioning.CascadingBumpEngine.Compute(graph, bumps);
+
+        var entry = Assert.Single(plan.Entries);
+        Assert.Equal("A", entry.PackageId);
+        Assert.Equal("1.0.1", entry.NewVersion);
+        Assert.Equal(BumpType.Patch, entry.AppliedBump);
+        Assert.False(entry.IsPropagated);
+    }
+
+    [Fact]
+    public void Compute_SinglePackageMinor_BumpsCorrectly()
+    {
+        var path = "/repo/src/A/A.csproj";
+        var node = MakeNode(path, "A", true);
+        var graph = MakeGraph((path, node));
+        var bumps = new Dictionary<string, BumpType> { ["A"] = BumpType.Minor };
+
+        var plan = titi.Versioning.CascadingBumpEngine.Compute(graph, bumps);
+
+        var entry = Assert.Single(plan.Entries);
+        Assert.Equal("1.1.0", entry.NewVersion);
+        Assert.Equal(BumpType.Minor, entry.AppliedBump);
+    }
+
+    [Fact]
+    public void Compute_SinglePackageMajor_BumpsCorrectly()
+    {
+        var path = "/repo/src/A/A.csproj";
+        var node = MakeNode(path, "A", true);
+        var graph = MakeGraph((path, node));
+        var bumps = new Dictionary<string, BumpType> { ["A"] = BumpType.Major };
+
+        var plan = titi.Versioning.CascadingBumpEngine.Compute(graph, bumps);
+
+        var entry = Assert.Single(plan.Entries);
+        Assert.Equal("2.0.0", entry.NewVersion);
+        Assert.Equal(BumpType.Major, entry.AppliedBump);
+    }
+
+    [Fact]
+    public void Compute_Propagation_MajorPropagatesToDependents()
+    {
+        // A -> B (A depends on B)
+        var pathB = "/repo/src/B/B.csproj";
+        var nodeB = MakeNode(pathB, "B", true);
+        var pathA = "/repo/src/A/A.csproj";
+        var nodeA = MakeNode(pathA, "A", true, [pathB]);
+        // Topological order: B first, then A
+        var graph = MakeGraph((pathB, nodeB), (pathA, nodeA));
+        var bumps = new Dictionary<string, BumpType> { ["B"] = BumpType.Major };
+
+        var plan = titi.Versioning.CascadingBumpEngine.Compute(graph, bumps);
+
+        Assert.Equal(2, plan.Entries.Length);
+        var bEntry = plan.Entries.First(e => e.PackageId == "B");
+        var aEntry = plan.Entries.First(e => e.PackageId == "A");
+        Assert.Equal("2.0.0", bEntry.NewVersion);
+        Assert.False(bEntry.IsPropagated);
+        Assert.Equal("2.0.0", aEntry.NewVersion);
+        Assert.True(aEntry.IsPropagated);
+    }
+
+    [Fact]
+    public void Compute_Propagation_PatchDoesNotPropagate()
+    {
+        // A -> B, but B has only patch changes
+        var pathB = "/repo/src/B/B.csproj";
+        var nodeB = MakeNode(pathB, "B", true);
+        var pathA = "/repo/src/A/A.csproj";
+        var nodeA = MakeNode(pathA, "A", true, [pathB]);
+        var graph = MakeGraph((pathB, nodeB), (pathA, nodeA));
+        // Use ApiCompat provider that returns InternalOnly for B
+        var bumps = new Dictionary<string, BumpType> { ["B"] = BumpType.Patch };
+
+        var plan = titi.Versioning.CascadingBumpEngine.Compute(graph, bumps,
+            apiCompatProvider: (pkg, _) => pkg == "B" ? BumpClassification.InternalOnly : BumpClassification.Additive);
+
+        Assert.Single(plan.Entries); // Only B, no propagation
+        Assert.Equal("B", plan.Entries[0].PackageId);
+    }
+
+    [Fact]
+    public void Compute_UnknownPackage_ReportsIssue()
+    {
+        var graph = MakeGraph();
+        var bumps = new Dictionary<string, BumpType> { ["Unknown"] = BumpType.Minor };
+
+        var plan = titi.Versioning.CascadingBumpEngine.Compute(graph, bumps);
+
+        Assert.Empty(plan.Entries);
+        Assert.True(plan.HasErrors);
+        Assert.Contains("Unknown", plan.Issues![0]);
+    }
+
+    [Fact]
+    public void ApplyBump_Patch_ReturnsCorrectVersion()
+    {
+        Assert.Equal("1.0.1", titi.Versioning.CascadingBumpEngine.ApplyBump("1.0.0", BumpType.Patch));
+        Assert.Equal("1.2.4", titi.Versioning.CascadingBumpEngine.ApplyBump("1.2.3", BumpType.Patch));
+    }
+
+    [Fact]
+    public void ApplyBump_Minor_ReturnsCorrectVersion()
+    {
+        Assert.Equal("1.1.0", titi.Versioning.CascadingBumpEngine.ApplyBump("1.0.0", BumpType.Minor));
+        Assert.Equal("2.3.0", titi.Versioning.CascadingBumpEngine.ApplyBump("2.2.0", BumpType.Minor));
+    }
+
+    [Fact]
+    public void ApplyBump_Major_ReturnsCorrectVersion()
+    {
+        Assert.Equal("2.0.0", titi.Versioning.CascadingBumpEngine.ApplyBump("1.0.0", BumpType.Major));
+        Assert.Equal("3.0.0", titi.Versioning.CascadingBumpEngine.ApplyBump("2.9.9", BumpType.Major));
+    }
+
+    [Fact]
+    public void ApplyBump_InvalidVersion_ReturnsOriginal()
+    {
+        Assert.Equal("not-a-version", titi.Versioning.CascadingBumpEngine.ApplyBump("not-a-version", BumpType.Patch));
+    }
+
+    [Fact]
+    public void BumpToClassification_Conversion_OrdersCorrectly()
+    {
+        Assert.Equal(BumpClassification.InternalOnly, titi.Versioning.CascadingBumpEngine.BumpToClassification(BumpType.Patch));
+        Assert.Equal(BumpClassification.Additive, titi.Versioning.CascadingBumpEngine.BumpToClassification(BumpType.Minor));
+        Assert.Equal(BumpClassification.Breaking, titi.Versioning.CascadingBumpEngine.BumpToClassification(BumpType.Major));
+    }
+
+    [Fact]
+    public void Compute_Propagation_ChainPropagatesCorrectly()
+    {
+        // A -> B -> C (A depends on B, B depends on C)
+        var pathC = "/repo/src/C/C.csproj";
+        var nodeC = MakeNode(pathC, "C", true);
+        var pathB = "/repo/src/B/B.csproj";
+        var nodeB = MakeNode(pathB, "B", true, [pathC]);
+        var pathA = "/repo/src/A/A.csproj";
+        var nodeA = MakeNode(pathA, "A", true, [pathB]);
+        var graph = MakeGraph((pathC, nodeC), (pathB, nodeB), (pathA, nodeA));
+        var bumps = new Dictionary<string, BumpType> { ["C"] = BumpType.Minor };
+
+        var plan = titi.Versioning.CascadingBumpEngine.Compute(graph, bumps,
+            apiCompatProvider: (pkg, _) => BumpClassification.Additive);
+
+        Assert.Equal(3, plan.Entries.Length);
+        Assert.Equal("1.1.0", plan.Entries.First(e => e.PackageId == "C").NewVersion);
+        Assert.Equal("1.1.0", plan.Entries.First(e => e.PackageId == "B").NewVersion);
+        Assert.Equal("1.1.0", plan.Entries.First(e => e.PackageId == "A").NewVersion);
+    }
+}
