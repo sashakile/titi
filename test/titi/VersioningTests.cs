@@ -589,3 +589,86 @@ public class CpmDetectionTests
         }
     }
 }
+
+public class BaselineAcquirerTests
+{
+    [Fact]
+    public void DetermineBaseline_BelowCurrent_ReturnsHighestStable()
+    {
+        var result = titi.Versioning.BaselineAcquirer.DetermineBaselineVersion(
+            "2.0.0", ["1.0.0", "1.5.0", "1.9.0", "2.0.0", "3.0.0"]);
+        Assert.Equal("1.9.0", result);
+    }
+
+    [Fact]
+    public void DetermineBaseline_NoVersionsBelow_ReturnsNull()
+    {
+        var result = titi.Versioning.BaselineAcquirer.DetermineBaselineVersion(
+            "1.0.0", ["1.0.0", "1.5.0"]);
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public void DetermineBaseline_OnlyPrereleaseVersions_ReturnsNull()
+    {
+        var result = titi.Versioning.BaselineAcquirer.DetermineBaselineVersion(
+            "2.0.0", ["1.0.0-alpha", "1.5.0-beta", "1.9.0-rc.1"]);
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public void DetermineBaseline_CurrentIsPrerelease_ReturnsHighestStableBelow()
+    {
+        var result = titi.Versioning.BaselineAcquirer.DetermineBaselineVersion(
+            "2.0.0-alpha", ["1.0.0", "1.5.0", "1.9.0", "2.0.0-alpha"]);
+        Assert.Equal("1.9.0", result);
+    }
+
+    [Fact]
+    public void DetermineBaseline_MixedVersions_IgnoresPrerelease()
+    {
+        var result = titi.Versioning.BaselineAcquirer.DetermineBaselineVersion(
+            "3.0.0", ["1.0.0", "1.5.0-beta", "2.0.0", "2.5.0-rc.1"]);
+        Assert.Equal("2.0.0", result);
+    }
+
+    [Fact]
+    public void DetermineBaseline_EmptyAvailable_ReturnsNull()
+    {
+        var result = titi.Versioning.BaselineAcquirer.DetermineBaselineVersion(
+            "1.0.0", []);
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public void DetermineBaseline_InvalidCurrentVersion_ReturnsNull()
+    {
+        var result = titi.Versioning.BaselineAcquirer.DetermineBaselineVersion(
+            "not-a-version", ["1.0.0"]);
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public void DetermineBaseline_NumericSorting_ReturnsHighestNotLatest()
+    {
+        var result = titi.Versioning.BaselineAcquirer.DetermineBaselineVersion(
+            "10.0.0", ["1.0.0", "9.0.0", "10.0.0", "2.0.0"]);
+        Assert.Equal("9.0.0", result);
+    }
+
+    [Fact]
+    public void DetermineBaseline_ExactMatchBelowCurrent_ReturnsIt()
+    {
+        var result = titi.Versioning.BaselineAcquirer.DetermineBaselineVersion(
+            "2.0.0", ["1.0.0", "1.9.9", "2.0.0"]);
+        Assert.Equal("1.9.9", result);
+    }
+
+    [Fact]
+    public void DetermineBaseline_CurrentVersionItself_Excluded()
+    {
+        var result = titi.Versioning.BaselineAcquirer.DetermineBaselineVersion(
+            "2.0.0", ["1.0.0", "2.0.0"]);
+        Assert.Equal("1.0.0", result);
+    }
+}

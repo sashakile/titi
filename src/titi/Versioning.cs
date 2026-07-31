@@ -434,6 +434,178 @@ public static class NuGetVersionResolver
     /// <summary>Sort key for prerelease labels: null (stable) sorts after all labels (semver).</summary>
 }
 
+// ── Baseline Assembly Acquisition (VN-08) ───────────────────────
+
+/// <summary>Result of a baseline assembly acquisition attempt.</summary>
+public record BaselineAcquisitionResult(
+    string? AssemblyPath,
+    string? Version,
+    string? Diagnostic
+);
+
+/// <summary>Acquire baseline assemblies from NuGet feeds for ApiCompat comparison.</summary>
+public static class BaselineAcquirer
+{
+    /// <summary>Determine the baseline version (highest stable version below the current version).</summary>
+    public static string? DetermineBaselineVersion(string currentVersion, IReadOnlyList<string> availableVersions)
+    {
+        if (string.IsNullOrEmpty(currentVersion) || availableVersions.Count == 0)
+            return null;
+
+        var current = NuGetVersionResolver.ParseVersion(currentVersion);
+        if (current == null) return null;
+
+        var cv = current.Value;
+
+        // Find the highest stable version below the current version
+        var parsed = availableVersions
+            .Select(v => (Raw: v, Parsed: NuGetVersionResolver.ParseVersion(v)))
+            .Where(x => x.Parsed != null)
+            .Select(x => (x.Raw, Parsed: x.Parsed!.Value))
+            .Where(x => x.Parsed.Prerelease == null) // only stable versions
+            .Where(x => CompareVersionsInternal(x.Parsed, cv) < 0) // below current
+            .OrderByDescending(x => x.Parsed.Major)
+            .ThenByDescending(x => x.Parsed.Minor)
+            .ThenByDescending(x => x.Parsed.Patch)
+            .ToList();
+
+        return parsed.Count > 0 ? parsed[0].Raw : null;
+    }
+
+    /// <summary>Acquire a baseline assembly from a NuGet feed.</summary>
+    public static async Task<BaselineAcquisitionResult> AcquireBaselineAsync(
+        string packageId,
+        string baselineVersion,
+        string feedUrl,
+        string cacheDir,
+        CancellationToken ct = default)
+    {
+        try
+        {
+            var nupkgPath = await DownloadPackageAsync(packageId, baselineVersion, feedUrl, cacheDir, ct).ConfigureAwait(false);
+            if (nupkgPath == null)
+                return new BaselineAcquisitionResult(null, null, "Failed to download package from feed");
+
+            var assemblyPath = await ExtractAssemblyAsync(nupkgPath, cacheDir, ct).ConfigureAwait(false);
+            if (assemblyPath == null)
+                return new BaselineAcquisitionResult(null, null, "No .dll found in package");
+
+            return new BaselineAcquisitionResult(assemblyPath, baselineVersion, null);
+        }
+        catch (HttpRequestException ex)
+        {
+            return new BaselineAcquisitionResult(null, null, $"Feed unreachable: {ex.Message}");
+        }
+        catch (OperationCanceledException)
+        {
+            return new BaselineAcquisitionResult(null, null, "Download timed out");
+        }
+        catch (Exception ex)
+        {
+            return new BaselineAcquisitionResult(null, null, $"Acquisition failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>Query available versions from a NuGet v3 feed.</summary>
+    public static async Task<IReadOnlyList<string>> QueryAvailableVersionsAsync(
+        string packageId, string feedUrl, CancellationToken ct = default)
+    {
+        try
+        {
+            using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
+            var id = packageId.ToLowerInvariant();
+            // Use the v3-flatcontainer protocol directly
+            var versionsUrl = feedUrl.TrimEnd('/') + $"/v3-flatcontainer/{id}/index.json";
+            var response = await client.GetAsync(versionsUrl, ct).ConfigureAwait(false);
+            response.EnsureSuccessStatusCode();
+
+            var json = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+            var doc = System.Text.Json.JsonDocument.Parse(json);
+            if (doc.RootElement.TryGetProperty("versions", out var versions))
+            {
+                return versions.EnumerateArray().Select(v => v.GetString()!).Where(s => s != null).ToList();
+            }
+
+            return [];
+        }
+        catch
+        {
+            return [];
+        }
+    }
+
+    /// <summary>Download a NuGet package from the v3-flatcontainer endpoint.</summary>
+    static async Task<string?> DownloadPackageAsync(
+        string packageId, string version, string feedUrl, string cacheDir, CancellationToken ct)
+    {
+        var id = packageId.ToLowerInvariant();
+        var ver = version.ToLowerInvariant();
+        var nupkgName = $"{id}.{ver}.nupkg";
+        var cachePath = Path.Combine(cacheDir, "baselines", nupkgName);
+
+        if (File.Exists(cachePath))
+            return cachePath;
+
+        Directory.CreateDirectory(Path.GetDirectoryName(cachePath)!);
+
+        using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
+        var downloadUrl = feedUrl.TrimEnd('/') + $"/v3-flatcontainer/{id}/{ver}/{nupkgName}";
+
+        var response = await client.GetAsync(downloadUrl, ct).ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+
+        using var stream = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+        using var fileStream = File.Create(cachePath);
+        await stream.CopyToAsync(fileStream, ct).ConfigureAwait(false);
+
+        return cachePath;
+    }
+
+    /// <summary>Extract the assembly (.dll) from a .nupkg file.</summary>
+    static async Task<string?> ExtractAssemblyAsync(string nupkgPath, string cacheDir, CancellationToken ct)
+    {
+        var extractDir = Path.Combine(cacheDir, "baselines", "extracted", Path.GetFileNameWithoutExtension(nupkgPath));
+
+        if (Directory.Exists(extractDir))
+        {
+            var cached = Directory.GetFiles(extractDir, "*.dll", SearchOption.AllDirectories).FirstOrDefault();
+            if (cached != null) return cached;
+        }
+
+        Directory.CreateDirectory(extractDir);
+
+        await Task.Run(() =>
+        {
+            System.IO.Compression.ZipFile.ExtractToDirectory(nupkgPath, extractDir, overwriteFiles: true);
+        }, ct).ConfigureAwait(false);
+
+        // Find the main assembly (prefer the one in lib/{tfm}/ or the root)
+        var dlls = Directory.GetFiles(extractDir, "*.dll", SearchOption.AllDirectories)
+            .Where(d =>
+            {
+                var name = Path.GetFileNameWithoutExtension(d);
+                return !name.StartsWith("System.") && !name.StartsWith("Microsoft.") && !name.StartsWith("mscorlib");
+            })
+            .OrderBy(d => d.Contains("/lib/") ? 0 : 1)
+            .ThenBy(d => d.Length) // prefer shorter paths (closer to root)
+            .ToList();
+
+        return dlls.FirstOrDefault();
+    }
+
+    /// <summary>Compare two ParsedVersions (internal helper, avoids exposing NuGetVersionResolver.CompareVersions).</summary>
+    static int CompareVersionsInternal(ParsedVersion a, ParsedVersion b)
+    {
+        var majorCmp = a.Major.CompareTo(b.Major);
+        if (majorCmp != 0) return majorCmp;
+        var minorCmp = a.Minor.CompareTo(b.Minor);
+        if (minorCmp != 0) return minorCmp;
+        var patchCmp = a.Patch.CompareTo(b.Patch);
+        if (patchCmp != 0) return patchCmp;
+        return 0;
+    }
+}
+
 public static class CpmDetector
 {
     /// <summary>Detect Central Package Management (CPM) configuration from the repo root.</summary>
