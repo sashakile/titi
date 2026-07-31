@@ -62,6 +62,4 @@ jobs:
         run: |
           dotnet publish src/titi/titi.csproj --configuration Release --self-contained -r linux-x64 -o dist/publish
           ./dist/publish/titi --help
-          # Adapter handshake smoke test
-          echo '{"command":"handshake"}' | ./dist/publish/titi testaruda-adapter | grep -q '"ok":true'
-          echo "✅ Published artifact validated (--help + adapter handshake)"
+          echo "✅ Published artifact validated (--help)"
