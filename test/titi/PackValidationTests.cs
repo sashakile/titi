@@ -79,9 +79,8 @@ public class PackValidationTests
             Assert.True(File.Exists(toolExe),
                 $"titi binary not found at {toolExe}");
 
-            // Run titi --help from the clean environment
-            var (helpOut, helpErr, helpExit) = TitiTestRunner.RunTiti(
-                ["--help"], tempDir, 30_000);
+            // Run the installed tool binary directly (not the source-built one)
+            var (helpOut, helpErr, helpExit) = RunTitiBinary(toolExe, ["--help"], tempDir, 30_000);
 
             Assert.True(helpExit == 0,
                 $"titi --help failed (exit {helpExit}): {helpErr}");
@@ -92,5 +91,28 @@ public class PackValidationTests
             if (Directory.Exists(tempDir))
                 Directory.Delete(tempDir, recursive: true);
         }
+    }
+
+    /// <summary>Run a titi binary directly with the given args.</summary>
+    static (string Stdout, string Stderr, int ExitCode) RunTitiBinary(
+        string binaryPath, string[] args, string workingDirectory, int timeoutMs = 30_000)
+    {
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = binaryPath,
+            Arguments = string.Join(" ", args.Select(a => $"\"{a}\"")),
+            WorkingDirectory = workingDirectory,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+        };
+
+        using var proc = Process.Start(startInfo);
+        if (proc == null) return ("", "", -1);
+
+        var stdout = proc.StandardOutput.ReadToEnd();
+        var stderr = proc.StandardError.ReadToEnd();
+        proc.WaitForExit(timeoutMs);
+        return (stdout, stderr, proc.ExitCode);
     }
 }
