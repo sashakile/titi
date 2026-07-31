@@ -1,10 +1,12 @@
-// titi.versioning — NBGV integration, version detection, and version plan computation
+// titi.versioning — NBGV integration, version detection, version resolution, and version plan computation
 // VN-01: Read version from version.json per project
+// VN-02: NuGet lowest-applicable-version resolution
 
 namespace titi.Versioning;
 
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 using System.Xml.Linq;
 
 /// <summary>NBGV version.json file format (subset relevant to titi).</summary>
@@ -30,6 +32,407 @@ public record VersionDetectResult(
     int ManagedCount,
     int UnmanagedCount
 );
+
+// ── NuGet Version Resolution (VN-02) ────────────────────────────
+
+/// <summary>Internal parsed version for comparison.</summary>
+internal readonly record struct ParsedVersion(
+    int Major,
+    int Minor,
+    int Patch,
+    string? Prerelease,
+    string? Metadata
+)
+{
+    public override string ToString()
+    {
+        var s = $"{Major}.{Minor}.{Patch}";
+        if (Prerelease != null) s += $"-{Prerelease}";
+        if (Metadata != null) s += "+" + Metadata;
+        return s;
+    }
+}
+
+/// <summary>Which version field is floating in a version spec.</summary>
+internal enum FloatingField { None, Patch, Minor, Major, Prerelease }
+
+/// <summary>Resolved version spec — either a range or a floating pattern.</summary>
+internal readonly record struct VersionRange(
+    ParsedVersion? MinVersion,
+    ParsedVersion? MaxVersion,
+    bool IsMinInclusive,
+    bool IsMaxInclusive,
+    FloatingField Floating,
+    string? FixedPrereleasePrefix
+);
+
+/// <summary>Resolve floating NuGet versions to the lowest applicable version from a feed.</summary>
+public static class NuGetVersionResolver
+{
+    static readonly Regex ExactVersionRx = new(
+        @"^(\d+)\.(\d+)(?:\.(\d+))?(?:-(\S+?))?(?:\+(\S+?))?$",
+        RegexOptions.Compiled);
+
+    static readonly Regex FloatVersionRx = new(
+        @"^(\d+)\.(\d+)\.(\*|\d+)(?:-(\*|[\w.-]*\*))?$",
+        RegexOptions.Compiled);
+
+    static readonly Regex FloatMinorRx = new(
+        @"^(\d+)\.\*$",
+        RegexOptions.Compiled);
+
+    static readonly Regex FloatMajorRx = new(
+        @"^\*$",
+        RegexOptions.Compiled);
+
+    static readonly Regex RangeRx = new(
+        @"^([\[(])\s*(.*?)\s*,\s*(.*?)\s*([\])])$",
+        RegexOptions.Compiled);
+
+    static readonly Regex ExactRangeRx = new(
+        @"^\[\s*([^\]]+)\s*\]$",
+        RegexOptions.Compiled);
+
+    static readonly Regex SemVerRangeRx = new(
+        @"^([~^])(\d+)\.(\d+)(?:\.(\d+))?$",
+        RegexOptions.Compiled);
+
+    /// <summary>Check if a version spec is a floating version pattern.</summary>
+    public static bool IsFloating(string versionSpec)
+    {
+        if (string.IsNullOrEmpty(versionSpec)) return false;
+        return versionSpec.Contains('*');
+    }
+
+    /// <summary>
+    /// Resolve a version spec to the lowest applicable version from the provided list.
+    /// Supports exact versions, floating versions (1.0.*, 1.*, *), NuGet ranges
+    /// ([1.0.0,2.0.0), (1.0.0,)), and SemVer ranges (^1.0.0, ~1.0.0).
+    /// </summary>
+    public static string? Resolve(string versionSpec, IReadOnlyList<string> availableVersions)
+    {
+        if (string.IsNullOrEmpty(versionSpec) || availableVersions.Count == 0)
+            return null;
+
+        var range = ParseVersionSpec(versionSpec);
+        if (range == null) return null;
+
+        var r = range.Value;
+
+        // For exact version (no floating, no range syntax), check if it's available
+        if (r.Floating == FloatingField.None && r.MinVersion != null && r.MaxVersion == null
+            && r.IsMinInclusive && !HasRangeSyntax(versionSpec))
+        {
+            return availableVersions.Any(v => VersionEquals(v, r.MinVersion.Value))
+                ? versionSpec
+                : null;
+        }
+
+        // Parse all available versions, filter, find lowest
+        var parsed = availableVersions
+            .Select(v => (Raw: v, Parsed: ParseVersion(v)))
+            .Where(x => x.Parsed != null)
+            .Select(x => (x.Raw, Parsed: x.Parsed!.Value))
+            .Where(x => IsInRange(x.Parsed, r))
+            .OrderBy(x => x.Parsed.Major)
+            .ThenBy(x => x.Parsed.Minor)
+            .ThenBy(x => x.Parsed.Patch)
+            .ThenBy(x => x.Parsed.Prerelease ?? "\uFFFF") // stable sorts last
+            .ToList();
+
+        return parsed.Count > 0 ? FormatVersion(parsed[0].Parsed) : null;
+    }
+
+    /// <summary>Parse a version string into a ParsedVersion.</summary>
+    internal static ParsedVersion? ParseVersion(string version)
+    {
+        var m = ExactVersionRx.Match(version);
+        if (!m.Success) return null;
+
+        return new ParsedVersion(
+            Major: int.Parse(m.Groups[1].Value),
+            Minor: int.Parse(m.Groups[2].Value),
+            Patch: m.Groups[3].Success ? int.Parse(m.Groups[3].Value) : 0,
+            Prerelease: m.Groups[4].Success ? m.Groups[4].Value : null,
+            Metadata: m.Groups[5].Success ? m.Groups[5].Value : null
+        );
+    }
+
+    /// <summary>Format a ParsedVersion back to a version string.</summary>
+    internal static string FormatVersion(ParsedVersion v)
+    {
+        var s = $"{v.Major}.{v.Minor}.{v.Patch}";
+        if (v.Prerelease != null) s += "-" + v.Prerelease;
+        return s;
+    }
+
+    /// <summary>Check if a version equals a parsed version.</summary>
+    static bool VersionEquals(string version, ParsedVersion target)
+    {
+        var p = ParseVersion(version);
+        if (p == null) return false;
+        var v = p.Value;
+        return v.Major == target.Major
+            && v.Minor == target.Minor
+            && v.Patch == target.Patch
+            && v.Prerelease == target.Prerelease;
+    }
+
+    /// <summary>Check if a version string has range syntax (brackets, ^, ~).</summary>
+    static bool HasRangeSyntax(string spec)
+    {
+        if (spec.Length == 0) return false;
+        var c = spec[0];
+        return c == '[' || c == '(' || c == '^' || c == '~';
+    }
+
+    /// <summary>Parse a version spec into a range for filtering.</summary>
+    internal static VersionRange? ParseVersionSpec(string spec)
+    {
+        if (string.IsNullOrEmpty(spec)) return null;
+
+        // NuGet exact range: [1.0.0]
+        var exactM = ExactRangeRx.Match(spec);
+        if (exactM.Success)
+        {
+            var p = ParseVersion(exactM.Groups[1].Value.Trim());
+            if (p == null) return null;
+            // [1.0.0] means exactly 1.0.0 — bound both min and max
+            return new VersionRange(
+                MinVersion: p, MaxVersion: p,
+                IsMinInclusive: true, IsMaxInclusive: true,
+                Floating: FloatingField.None, FixedPrereleasePrefix: null);
+        }
+
+        // SemVer range: ^1.0.0 or ~1.0.0
+        var semverM = SemVerRangeRx.Match(spec);
+        if (semverM.Success)
+        {
+            var major = int.Parse(semverM.Groups[2].Value);
+            var minor = int.Parse(semverM.Groups[3].Value);
+            var patch = semverM.Groups[4].Success ? int.Parse(semverM.Groups[4].Value) : 0;
+
+            var minVer = new ParsedVersion(major, minor, patch, null, null);
+
+            ParsedVersion? maxVer;
+            if (semverM.Groups[1].Value == "^")
+            {
+                // ^1.0.0 = >=1.0.0, <2.0.0
+                maxVer = new ParsedVersion(major + 1, 0, 0, null, null);
+            }
+            else
+            {
+                // ~1.0.0 = >=1.0.0, <1.1.0
+                maxVer = new ParsedVersion(major, minor + 1, 0, null, null);
+            }
+
+            return new VersionRange(
+                MinVersion: minVer, MaxVersion: maxVer,
+                IsMinInclusive: true, IsMaxInclusive: false,
+                Floating: FloatingField.None, FixedPrereleasePrefix: null);
+        }
+
+        // NuGet range: [1.0.0, 2.0.0), (1.0.0, ), etc.
+        var rangeM = RangeRx.Match(spec);
+        if (rangeM.Success)
+        {
+            var isMinInclusive = rangeM.Groups[1].Value == "[";
+            var isMaxInclusive = rangeM.Groups[4].Value == "]";
+
+            ParsedVersion? minVer = null;
+            var minStr = rangeM.Groups[2].Value.Trim();
+            if (minStr.Length > 0)
+            {
+                var p = ParseVersion(minStr);
+                if (p == null) return null;
+                minVer = p;
+            }
+
+            ParsedVersion? maxVer = null;
+            var maxStr = rangeM.Groups[3].Value.Trim();
+            if (maxStr.Length > 0)
+            {
+                var p = ParseVersion(maxStr);
+                if (p == null) return null;
+                maxVer = p;
+            }
+
+            return new VersionRange(
+                MinVersion: minVer, MaxVersion: maxVer,
+                IsMinInclusive: isMinInclusive, IsMaxInclusive: isMaxInclusive,
+                Floating: FloatingField.None, FixedPrereleasePrefix: null);
+        }
+
+        // Floating version: 1.0.*, 1.*, *, 1.0.0-*, 1.0.0-beta.*
+        if (spec.Contains('*'))
+        {
+            // Check for floating prerelease: 1.0.0-* or 1.0.0-beta.*
+            var dashIdx = spec.IndexOf('-');
+            if (dashIdx >= 0)
+            {
+                var versionPart = spec[..dashIdx];
+                var prereleasePart = spec[(dashIdx + 1)..];
+
+                var vp = ParseVersion(versionPart);
+                if (vp == null) return null;
+                var pv = vp.Value;
+
+                // Check if the prerelease has * in it
+                if (prereleasePart == "*" || prereleasePart.EndsWith(".*"))
+                {
+                    var fixedPrefix = prereleasePart == "*" ? "" : prereleasePart[..^2];
+                    // trim trailing dot from prefix
+                    if (fixedPrefix.EndsWith(".")) fixedPrefix = fixedPrefix[..^1];
+                    return new VersionRange(
+                        MinVersion: new ParsedVersion(pv.Major, pv.Minor, pv.Patch, null, null),
+                        MaxVersion: null,
+                        IsMinInclusive: true, IsMaxInclusive: false,
+                        Floating: FloatingField.Prerelease,
+                        FixedPrereleasePrefix: fixedPrefix.Length > 0 ? fixedPrefix : null);
+                }
+
+                return null;
+            }
+
+            // Check for 1.0.* (float patch)
+            var floatM = FloatVersionRx.Match(spec);
+            if (floatM.Success)
+            {
+                var major = int.Parse(floatM.Groups[1].Value);
+                var minor = int.Parse(floatM.Groups[2].Value);
+
+                return new VersionRange(
+                    MinVersion: new ParsedVersion(major, minor, 0, null, null),
+                    MaxVersion: null,
+                    IsMinInclusive: true, IsMaxInclusive: false,
+                    Floating: FloatingField.Patch, FixedPrereleasePrefix: null);
+            }
+
+            // Check for 1.* (float minor)
+            var minorM = FloatMinorRx.Match(spec);
+            if (minorM.Success)
+            {
+                var major = int.Parse(minorM.Groups[1].Value);
+                return new VersionRange(
+                    MinVersion: new ParsedVersion(major, 0, 0, null, null),
+                    MaxVersion: null,
+                    IsMinInclusive: true, IsMaxInclusive: false,
+                    Floating: FloatingField.Minor, FixedPrereleasePrefix: null);
+            }
+
+            // Check for * (float major)
+            if (FloatMajorRx.IsMatch(spec))
+            {
+                return new VersionRange(
+                    MinVersion: null, MaxVersion: null,
+                    IsMinInclusive: true, IsMaxInclusive: false,
+                    Floating: FloatingField.Major, FixedPrereleasePrefix: null);
+            }
+
+            return null;
+        }
+
+        // Bare version: 1.0.0 (exact pin)
+        var bare = ParseVersion(spec);
+        if (bare != null)
+        {
+            return new VersionRange(
+                MinVersion: bare, MaxVersion: null,
+                IsMinInclusive: true, IsMaxInclusive: false,
+                Floating: FloatingField.None, FixedPrereleasePrefix: null);
+        }
+
+        return null;
+    }
+
+    /// <summary>Check if a parsed version is within a version range.</summary>
+    static bool IsInRange(ParsedVersion version, VersionRange range)
+    {
+        // Check min bound
+        if (range.MinVersion != null)
+        {
+            var min = range.MinVersion.Value;
+
+            if (range.Floating == FloatingField.Prerelease)
+            {
+                // For floating prerelease, min version is the base version (1.0.0).
+                // Match only major.minor.patch — any prerelease of the base version qualifies.
+                if (version.Major != min.Major || version.Minor != min.Minor || version.Patch != min.Patch)
+                    return false;
+                if (version.Prerelease == null)
+                    return false; // must have a prerelease label
+            }
+            else if (range.Floating != FloatingField.None)
+            {
+                // For floating major/minor/patch, the fixed prefix must match
+                if (!MatchesFloatingPrefix(version, min, range.Floating))
+                    return false;
+            }
+            else
+            {
+                // Standard version range comparison
+                var cmp = CompareVersions(version, min);
+                if (range.IsMinInclusive ? cmp < 0 : cmp <= 0)
+                    return false;
+            }
+        }
+
+        // Check max bound
+        if (range.MaxVersion != null)
+        {
+            var max = range.MaxVersion.Value;
+            var cmp = CompareVersions(version, max);
+            if (range.IsMaxInclusive ? cmp > 0 : cmp >= 0)
+                return false;
+        }
+
+        // Check prerelease floating prefix (for prerelease patterns like 1.0.0-beta.*)
+        if (range.Floating == FloatingField.Prerelease && range.FixedPrereleasePrefix != null)
+        {
+            if (version.Prerelease == null)
+                return false;
+            if (!version.Prerelease.StartsWith(range.FixedPrereleasePrefix))
+                return false;
+        }
+
+        return true;
+    }
+
+    /// <summary>Check if version matches the fixed prefix of a floating range.</summary>
+    static bool MatchesFloatingPrefix(ParsedVersion version, ParsedVersion prefix, FloatingField floating)
+    {
+        if (version.Major != prefix.Major) return false;
+        if (floating == FloatingField.Major) return true;
+        if (version.Minor != prefix.Minor) return false;
+        if (floating == FloatingField.Minor) return true;
+        // FloatingField.Patch: patch must match? No, patch is floating so any patch is fine
+        if (floating == FloatingField.Patch) return true;
+        return false;
+    }
+
+    /// <summary>Compare two parsed versions. Returns negative, zero, or positive.</summary>
+    static int CompareVersions(ParsedVersion a, ParsedVersion b)
+    {
+        var majorCmp = a.Major.CompareTo(b.Major);
+        if (majorCmp != 0) return majorCmp;
+
+        var minorCmp = a.Minor.CompareTo(b.Minor);
+        if (minorCmp != 0) return minorCmp;
+
+        var patchCmp = a.Patch.CompareTo(b.Patch);
+        if (patchCmp != 0) return patchCmp;
+
+        // Prerelease: no prerelease > any prerelease (stable > prerelease)
+        if (a.Prerelease == null && b.Prerelease != null) return 1;
+        if (a.Prerelease != null && b.Prerelease == null) return -1;
+
+        if (a.Prerelease == null && b.Prerelease == null) return 0;
+
+        return string.Compare(a.Prerelease, b.Prerelease, StringComparison.Ordinal);
+    }
+
+    /// <summary>Sort key for prerelease labels: null (stable) sorts after all labels (semver).</summary>
+}
 
 public static class CpmDetector
 {

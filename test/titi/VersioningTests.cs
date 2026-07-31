@@ -196,6 +196,169 @@ public class VersioningTests
     }
 }
 
+public class NuGetVersionResolverTests
+{
+    [Fact]
+    public void Resolve_ExactVersion_ReturnsSame()
+    {
+        var result = NuGetVersionResolver.Resolve("1.0.0", ["1.0.0", "1.0.1", "1.1.0"]);
+        Assert.Equal("1.0.0", result);
+    }
+
+    [Fact]
+    public void Resolve_FloatingMajorMinorPatch_ReturnsLowestMatch()
+    {
+        var result = NuGetVersionResolver.Resolve("1.0.*", ["1.0.0", "1.0.1", "1.0.10", "1.1.0"]);
+        Assert.Equal("1.0.0", result);
+    }
+
+    [Fact]
+    public void Resolve_FloatingMajorMinor_ReturnsLowestMatch()
+    {
+        var result = NuGetVersionResolver.Resolve("1.*", ["1.0.0", "1.1.0", "1.10.0", "2.0.0"]);
+        Assert.Equal("1.0.0", result);
+    }
+
+    [Fact]
+    public void Resolve_WildcardOnly_ReturnsLowestVersion()
+    {
+        var result = NuGetVersionResolver.Resolve("*", ["1.0.0", "2.0.0", "0.5.0"]);
+        Assert.Equal("0.5.0", result);
+    }
+
+    [Fact]
+    public void Resolve_NoMatch_ReturnsNull()
+    {
+        var result = NuGetVersionResolver.Resolve("2.*", ["1.0.0", "1.1.0"]);
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public void Resolve_EmptyFeed_ReturnsNull()
+    {
+        var result = NuGetVersionResolver.Resolve("1.0.*", []);
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public void Resolve_SortsVersionsNumerically()
+    {
+        var result = NuGetVersionResolver.Resolve("1.0.*", ["1.0.10", "1.0.2", "1.0.1"]);
+        Assert.Equal("1.0.1", result);
+    }
+
+    [Fact]
+    public void Resolve_PrereleaseVersions_CanMatch()
+    {
+        var result = NuGetVersionResolver.Resolve("1.0.0-beta.*", ["1.0.0-beta.1", "1.0.0-beta.2", "1.0.0"]);
+        Assert.Equal("1.0.0-beta.1", result);
+    }
+
+    [Fact]
+    public void Resolve_FloatingPrereleaseWithStar_ReturnsLowestMatch()
+    {
+        var result = NuGetVersionResolver.Resolve("1.0.0-*", ["1.0.0-alpha.1", "1.0.0-beta.1", "1.0.0"]);
+        Assert.Equal("1.0.0-alpha.1", result);
+    }
+
+    [Fact]
+    public void Resolve_ExactPrerelease_ReturnsOriginalSpec()
+    {
+        var result = NuGetVersionResolver.Resolve("1.0.0-beta.1", ["1.0.0-beta.1"]);
+        Assert.Equal("1.0.0-beta.1", result);
+    }
+
+    [Fact]
+    public void IsFloating_Star_ReturnsTrue()
+    {
+        Assert.True(NuGetVersionResolver.IsFloating("*"));
+        Assert.True(NuGetVersionResolver.IsFloating("1.*"));
+        Assert.True(NuGetVersionResolver.IsFloating("1.0.*"));
+        Assert.True(NuGetVersionResolver.IsFloating("1.0.0-beta.*"));
+        Assert.True(NuGetVersionResolver.IsFloating("1.0.0-*"));
+    }
+
+    [Fact]
+    public void IsFloating_ExactVersion_ReturnsFalse()
+    {
+        Assert.False(NuGetVersionResolver.IsFloating("1.0.0"));
+        Assert.False(NuGetVersionResolver.IsFloating("1.0.0-beta.1"));
+        Assert.False(NuGetVersionResolver.IsFloating(""));
+    }
+
+    [Fact]
+    public void Resolve_WithVersionRangeExact_ReturnsExactMatch()
+    {
+        var result = NuGetVersionResolver.Resolve("[1.0.0]", ["1.0.0", "1.0.1"]);
+        Assert.Equal("1.0.0", result);
+    }
+
+    [Fact]
+    public void Resolve_WithVersionRange_ReturnsLowestInRange()
+    {
+        var result = NuGetVersionResolver.Resolve("[1.0.0, 2.0.0)", ["0.9.0", "1.0.0", "1.5.0", "2.0.0"]);
+        Assert.Equal("1.0.0", result);
+    }
+
+    [Fact]
+    public void Resolve_WithOpenRange_ReturnsLowestMatch()
+    {
+        var result = NuGetVersionResolver.Resolve("(1.0.0, )", ["1.0.0", "1.5.0", "2.0.0"]);
+        Assert.Equal("1.5.0", result);
+    }
+
+    [Fact]
+    public void Resolve_WithRangeNoMatch_ReturnsNull()
+    {
+        var result = NuGetVersionResolver.Resolve("(2.0.0, )", ["1.0.0", "1.5.0"]);
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public void Resolve_CaretVersion_ReturnsLowestMatching()
+    {
+        var result = NuGetVersionResolver.Resolve("^1.0.0", ["1.0.0", "1.5.0", "2.0.0"]);
+        Assert.Equal("1.0.0", result);
+    }
+
+    [Fact]
+    public void Resolve_TildeVersion_ReturnsLowestMatching()
+    {
+        var result = NuGetVersionResolver.Resolve("~1.0.0", ["1.0.0", "1.0.5", "1.1.0"]);
+        Assert.Equal("1.0.0", result);
+    }
+
+    [Fact]
+    public void Resolve_NonNuGetOrgFeed_ReturnsLowestMatch()
+    {
+        // Feed URL is just metadata for the resolver; version list drives resolution
+        var result = NuGetVersionResolver.Resolve("1.0.*", ["1.0.0", "1.0.3", "1.0.7"]);
+        Assert.Equal("1.0.0", result);
+    }
+
+    [Fact]
+    public void Resolve_MixedPrereleaseAndRelease_LowestWins()
+    {
+        // Semver: prerelease sorts before release, so the lowest of 1.0.* is the prerelease
+        var result = NuGetVersionResolver.Resolve("1.0.*", ["1.0.0-alpha.1", "1.0.0"]);
+        Assert.Equal("1.0.0-alpha.1", result);
+    }
+
+    [Fact]
+    public void Resolve_ThreePartPatch_LowestNumeric()
+    {
+        var result = NuGetVersionResolver.Resolve("1.0.*", ["1.0.11", "1.0.3", "1.0.20"]);
+        Assert.Equal("1.0.3", result);
+    }
+
+    [Fact]
+    public void Resolve_InvalidVersionSpec_ReturnsNull()
+    {
+        var result = NuGetVersionResolver.Resolve("not-a-version", ["1.0.0"]);
+        Assert.Null(result);
+    }
+}
+
 public class CpmDetectionTests
 {
     [Fact]
