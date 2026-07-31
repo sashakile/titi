@@ -140,6 +140,36 @@ public static class Program
         Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(
             output,
             titi.Serialization.TitiJsonContext.Default.OpenCommandOutput));
+
+        // Regenerate lock file after swap (VN-04)
+        Console.Error.WriteLine("Regenerating lock file...");
+        try
+        {
+            var restore = new System.Diagnostics.Process
+            {
+                StartInfo = new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = "dotnet",
+                    Arguments = $"restore \"{slnxPath}\" --force-evaluate",
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                }
+            };
+            restore.Start();
+            restore.WaitForExit(60000);
+            if (restore.ExitCode != 0)
+            {
+                var err = restore.StandardError.ReadToEnd();
+                Console.Error.WriteLine($"Warning: Lock file regeneration exited with code {restore.ExitCode}: {err.Trim()}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Warning: Could not regenerate lock file: {ex.Message}");
+        }
+
         return 0;
     }
 
@@ -1131,6 +1161,62 @@ public static class Program
                 Message: "No PackageVersion entries defined",
                 Detail: "CPM is enabled but no PackageVersion items were found in Directory.Packages.props",
                 Location: cpm.PackagesPropsPath!
+            ));
+        }
+
+        // Check lock file configuration (VN-04)
+        var packagesPropsPath = cpm.PackagesPropsPath ?? Path.Combine(repoRoot, "Directory.Packages.props");
+        var lockFileEnabled = false;
+        if (cpm.HasPackagesProps)
+        {
+            try
+            {
+                var props = File.ReadAllText(packagesPropsPath);
+                lockFileEnabled = props.Contains("<RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>", StringComparison.OrdinalIgnoreCase);
+            }
+            catch { }
+        }
+
+        if (!lockFileEnabled)
+        {
+            issues.Add(new titi.Serialization.ValidationIssue(
+                Severity: "warning",
+                Code: "LF-001",
+                Message: "RestorePackagesWithLockFile is not enabled",
+                Detail: "Set RestorePackagesWithLockFile=true in Directory.Packages.props to enable lock file management for reproducible restores",
+                Location: packagesPropsPath
+            ));
+
+            if (applyFix && cpm.HasPackagesProps)
+            {
+                try
+                {
+                    var props = File.ReadAllText(packagesPropsPath);
+                    if (!props.Contains("<RestorePackagesWithLockFile>"))
+                    {
+                        props = props.Replace("</PropertyGroup>",
+                            "    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>\n  </PropertyGroup>");
+                        File.WriteAllText(packagesPropsPath, props);
+                        Console.Error.WriteLine("Applied RestorePackagesWithLockFile=true to Directory.Packages.props");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine($"Failed to apply lock file setting: {ex.Message}");
+                }
+            }
+        }
+
+        // Check for lock files in the repo
+        var lockFiles = Directory.GetFiles(repoRoot, "packages.lock.json", SearchOption.AllDirectories);
+        if (lockFileEnabled && lockFiles.Length == 0)
+        {
+            issues.Add(new titi.Serialization.ValidationIssue(
+                Severity: "info",
+                Code: "LF-002",
+                Message: "No lock files found",
+                Detail: "RestorePackagesWithLockFile is enabled but no packages.lock.json files exist. Run 'dotnet restore --force-evaluate' to generate them",
+                Location: packagesPropsPath
             ));
         }
 
