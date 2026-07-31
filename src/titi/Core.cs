@@ -46,6 +46,7 @@ public static class Program
             ["tests", "ingest", ..] => TestsIngestCommand(args[2..]),
             ["tests", "record", ..] => TestsRecordCommand(),
             ["version", "detect", ..] => VersionDetectCommand(),
+            ["version", "plan", ..] => VersionPlanCommand(),
             ["version", "validate", ..] => VersionValidateCommand(args[2..]),
             ["testaruda-adapter", ..] => TestarudaAdapterCommand(),
             ["test-manifest", ..] => TestManifestCommand(args[1..]),
@@ -141,33 +142,36 @@ public static class Program
             output,
             titi.Serialization.TitiJsonContext.Default.OpenCommandOutput));
 
-        // Regenerate lock file after swap (VN-04)
-        Console.Error.WriteLine("Regenerating lock file...");
-        try
+        // Regenerate lock file after swap (VN-04) — only when packages were actually swapped
+        if (swapResult.Swapped.Length > 0)
         {
-            var restore = new System.Diagnostics.Process
+            Console.Error.WriteLine("Regenerating lock file...");
+            try
             {
-                StartInfo = new System.Diagnostics.ProcessStartInfo
+                var restore = new System.Diagnostics.Process
                 {
-                    FileName = "dotnet",
-                    Arguments = $"restore \"{slnxPath}\" --force-evaluate",
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    UseShellExecute = false,
-                    CreateNoWindow = true
+                    StartInfo = new System.Diagnostics.ProcessStartInfo
+                    {
+                        FileName = "dotnet",
+                        Arguments = "restore --force-evaluate",
+                        RedirectStandardOutput = true,
+                        RedirectStandardError = true,
+                        UseShellExecute = false,
+                        CreateNoWindow = true
+                    }
+                };
+                restore.Start();
+                restore.WaitForExit(60000);
+                if (restore.ExitCode != 0)
+                {
+                    var err = restore.StandardError.ReadToEnd();
+                    Console.Error.WriteLine($"Warning: Lock file regeneration exited with code {restore.ExitCode}: {err.Trim()}");
                 }
-            };
-            restore.Start();
-            restore.WaitForExit(60000);
-            if (restore.ExitCode != 0)
-            {
-                var err = restore.StandardError.ReadToEnd();
-                Console.Error.WriteLine($"Warning: Lock file regeneration exited with code {restore.ExitCode}: {err.Trim()}");
             }
-        }
-        catch (Exception ex)
-        {
-            Console.Error.WriteLine($"Warning: Could not regenerate lock file: {ex.Message}");
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"Warning: Could not regenerate lock file: {ex.Message}");
+            }
         }
 
         return 0;
@@ -1085,6 +1089,54 @@ public static class Program
         return 0;
     }
 
+    static int VersionPlanCommand()
+    {
+        var (graph, config, exitCode) = BuildGraphForRepo();
+        if (graph == null || exitCode != 0)
+            return exitCode;
+
+        Console.Error.WriteLine("Reading changesets...");
+        var repoRoot = Path.GetFullPath(Environment.CurrentDirectory);
+        var (valid, invalid) = titi.Versioning.ChangesetReader.ReadChangesets(repoRoot);
+
+        if (invalid.Length > 0)
+        {
+            foreach (var iv in invalid)
+                Console.Error.WriteLine($"Warning: {iv.Description}");
+        }
+
+        if (valid.Length == 0)
+        {
+            Console.Error.WriteLine("No valid changesets found — nothing to plan");
+            return invalid.Length > 0 ? 1 : 0;
+        }
+
+        var packageBumps = titi.Versioning.ChangesetReader.AggregateByPackage(valid);
+
+        Console.Error.WriteLine($"Computing version plan for {packageBumps.Count} packages...");
+        var plan = titi.Versioning.CascadingBumpEngine.Compute(
+            graph, packageBumps,
+            apiCompatProvider: null); // ApiCompat not wired yet — falls back to Breaking
+
+        var output = new titi.Serialization.VersionPlanOutput(
+            Entries: plan.Entries.Select(e => new titi.Serialization.VersionPlanEntryOutput(
+                PackageId: e.PackageId,
+                BaselineVersion: e.BaselineVersion,
+                NewVersion: e.NewVersion,
+                AppliedBump: e.AppliedBump.ToString(),
+                Classification: e.Classification.ToString(),
+                IsPropagated: e.IsPropagated
+            )).ToArray(),
+            Issues: plan.Issues,
+            HasErrors: plan.HasErrors
+        );
+
+        Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(
+            output,
+            titi.Serialization.TitiJsonContext.Default.VersionPlanOutput));
+        return plan.HasErrors ? 1 : 0;
+    }
+
     static int VersionValidateCommand(string[] flags)
     {
         var (graph, config, exitCode) = BuildGraphForRepo();
@@ -1208,7 +1260,9 @@ public static class Program
         }
 
         // Check for lock files in the repo
-        var lockFiles = Directory.GetFiles(repoRoot, "packages.lock.json", SearchOption.AllDirectories);
+        var lockFiles = Directory.GetFiles(repoRoot, "packages.lock.json", SearchOption.AllDirectories)
+            .Where(f => !f.Contains("/bin/") && !f.Contains("/obj/") && !f.Contains("/.titi/"))
+            .ToArray();
         if (lockFileEnabled && lockFiles.Length == 0)
         {
             issues.Add(new titi.Serialization.ValidationIssue(

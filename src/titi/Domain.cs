@@ -293,7 +293,7 @@ public record AffectedSet(
     public TestSelectionResult[] SelectedTests { get; init; } = [];
 }
 
-// ── CPM (Central Package Management) Domain Types ──────────────
+// ── Version Management Domain Types (VN-07) ────────────────────
 
 /// <summary>Bump classification for API surface changes.</summary>
 public enum BumpClassification { InternalOnly, Additive, Breaking }

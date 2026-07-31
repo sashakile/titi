@@ -114,6 +114,23 @@ public record VersionValidateOutput(
     ValidationIssue[] Issues
 );
 
+/// <summary>DTO for version plan command output.</summary>
+public record VersionPlanEntryOutput(
+    string PackageId,
+    string BaselineVersion,
+    string NewVersion,
+    string AppliedBump,
+    string Classification,
+    bool IsPropagated
+);
+
+/// <summary>DTO for version plan command output.</summary>
+public record VersionPlanOutput(
+    VersionPlanEntryOutput[] Entries,
+    string[]? Issues,
+    bool HasErrors
+);
+
 // ── Source-generated context ───────────────────────────────────
 
 /// <summary>
@@ -148,6 +165,10 @@ public record VersionValidateOutput(
 [JsonSerializable(typeof(ProjectVersionEntry))]
 [JsonSerializable(typeof(ProjectVersionEntry[]))]
 [JsonSerializable(typeof(VersionDetectOutput))]
+// Version plan command DTOs
+[JsonSerializable(typeof(VersionPlanEntryOutput))]
+[JsonSerializable(typeof(VersionPlanEntryOutput[]))]
+[JsonSerializable(typeof(VersionPlanOutput))]
 // Version validate command DTOs
 [JsonSerializable(typeof(ValidationIssue))]
 [JsonSerializable(typeof(ValidationIssue[]))]

@@ -472,21 +472,28 @@ public static class BaselineAcquirer
         return parsed.Count > 0 ? parsed[0].Raw : null;
     }
 
-    /// <summary>Acquire a baseline assembly from a NuGet feed.</summary>
+    /// <summary>
+    /// Acquire a baseline assembly from a NuGet feed.
+    /// </summary>
+    /// <param name="packageId">The NuGet package ID.</param>
+    /// <param name="baselineVersion">The version to download.</param>
+    /// <param name="flatContainerBaseUrl">NuGet v3-flatcontainer base URL, e.g. https://api.nuget.org/v3-flatcontainer/</param>
+    /// <param name="cacheDir">Directory for caching downloaded packages.</param>
+    /// <param name="ct">Cancellation token.</param>
     public static async Task<BaselineAcquisitionResult> AcquireBaselineAsync(
         string packageId,
         string baselineVersion,
-        string feedUrl,
+        string flatContainerBaseUrl,
         string cacheDir,
         CancellationToken ct = default)
     {
         try
         {
-            var nupkgPath = await DownloadPackageAsync(packageId, baselineVersion, feedUrl, cacheDir, ct).ConfigureAwait(false);
+            var nupkgPath = await DownloadPackageAsync(packageId, baselineVersion, flatContainerBaseUrl, cacheDir, ct).ConfigureAwait(false);
             if (nupkgPath == null)
                 return new BaselineAcquisitionResult(null, null, "Failed to download package from feed");
 
-            var assemblyPath = await ExtractAssemblyAsync(nupkgPath, cacheDir, ct).ConfigureAwait(false);
+            var assemblyPath = await ExtractAssemblyAsync(nupkgPath, packageId, cacheDir, ct).ConfigureAwait(false);
             if (assemblyPath == null)
                 return new BaselineAcquisitionResult(null, null, "No .dll found in package");
 
@@ -506,16 +513,20 @@ public static class BaselineAcquirer
         }
     }
 
-    /// <summary>Query available versions from a NuGet v3 feed.</summary>
+    /// <summary>
+    /// Query available versions from a NuGet v3-flatcontainer endpoint.
+    /// </summary>
+    /// <param name="packageId">The NuGet package ID.</param>
+    /// <param name="flatContainerBaseUrl">NuGet v3-flatcontainer base URL, e.g. https://api.nuget.org/v3-flatcontainer/</param>
+    /// <param name="ct">Cancellation token.</param>
     public static async Task<IReadOnlyList<string>> QueryAvailableVersionsAsync(
-        string packageId, string feedUrl, CancellationToken ct = default)
+        string packageId, string flatContainerBaseUrl, CancellationToken ct = default)
     {
         try
         {
             using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
             var id = packageId.ToLowerInvariant();
-            // Use the v3-flatcontainer protocol directly
-            var versionsUrl = feedUrl.TrimEnd('/') + $"/v3-flatcontainer/{id}/index.json";
+            var versionsUrl = $"{flatContainerBaseUrl.TrimEnd('/')}/{id}/index.json";
             var response = await client.GetAsync(versionsUrl, ct).ConfigureAwait(false);
             response.EnsureSuccessStatusCode();
 
@@ -536,12 +547,13 @@ public static class BaselineAcquirer
 
     /// <summary>Download a NuGet package from the v3-flatcontainer endpoint.</summary>
     static async Task<string?> DownloadPackageAsync(
-        string packageId, string version, string feedUrl, string cacheDir, CancellationToken ct)
+        string packageId, string version, string flatContainerBaseUrl, string cacheDir, CancellationToken ct)
     {
         var id = packageId.ToLowerInvariant();
         var ver = version.ToLowerInvariant();
         var nupkgName = $"{id}.{ver}.nupkg";
-        var cachePath = Path.Combine(cacheDir, "baselines", nupkgName);
+        var feedKey = flatContainerBaseUrl.TrimEnd('/').GetHashCode().ToString("x");
+        var cachePath = Path.Combine(cacheDir, "baselines", feedKey, nupkgName);
 
         if (File.Exists(cachePath))
             return cachePath;
@@ -549,7 +561,7 @@ public static class BaselineAcquirer
         Directory.CreateDirectory(Path.GetDirectoryName(cachePath)!);
 
         using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
-        var downloadUrl = feedUrl.TrimEnd('/') + $"/v3-flatcontainer/{id}/{ver}/{nupkgName}";
+        var downloadUrl = $"{flatContainerBaseUrl.TrimEnd('/')}/{id}/{ver}/{nupkgName}";
 
         var response = await client.GetAsync(downloadUrl, ct).ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
@@ -562,7 +574,7 @@ public static class BaselineAcquirer
     }
 
     /// <summary>Extract the assembly (.dll) from a .nupkg file.</summary>
-    static async Task<string?> ExtractAssemblyAsync(string nupkgPath, string cacheDir, CancellationToken ct)
+    static async Task<string?> ExtractAssemblyAsync(string nupkgPath, string packageId, string cacheDir, CancellationToken ct)
     {
         var extractDir = Path.Combine(cacheDir, "baselines", "extracted", Path.GetFileNameWithoutExtension(nupkgPath));
 
@@ -579,15 +591,13 @@ public static class BaselineAcquirer
             System.IO.Compression.ZipFile.ExtractToDirectory(nupkgPath, extractDir, overwriteFiles: true);
         }, ct).ConfigureAwait(false);
 
-        // Find the main assembly (prefer the one in lib/{tfm}/ or the root)
+        // Find the main assembly by matching the package ID
+        // The package's main assembly is typically named after the package ID
+        var dllName = $"{packageId}.dll";
         var dlls = Directory.GetFiles(extractDir, "*.dll", SearchOption.AllDirectories)
-            .Where(d =>
-            {
-                var name = Path.GetFileNameWithoutExtension(d);
-                return !name.StartsWith("System.") && !name.StartsWith("Microsoft.") && !name.StartsWith("mscorlib");
-            })
-            .OrderBy(d => d.Contains("/lib/") ? 0 : 1)
-            .ThenBy(d => d.Length) // prefer shorter paths (closer to root)
+            .OrderBy(d => Path.GetFileName(d).Equals(dllName, StringComparison.OrdinalIgnoreCase) ? 0 : 1)
+            .ThenBy(d => d.Contains("/lib/") ? 0 : 1)
+            .ThenBy(d => d.Length)
             .ToList();
 
         return dlls.FirstOrDefault();
@@ -821,7 +831,6 @@ public static class CascadingBumpEngine
         var fromNode = graph.Nodes.Values.FirstOrDefault(n => n.Project.PackageId == fromPackageId);
         if (fromNode == null) return;
 
-        var fromPath = fromNode.Project.Path;
 
         foreach (var (path, node) in graph.Nodes)
         {
