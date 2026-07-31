@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "dependencies": {
+    "net10.0": {
+      "orion.auth": {
+        "type": "Project",
+        "dependencies": {
+          "Orion.Core.Data": "[1.0.0, )"
+        }
+      },
+      "orion.core.data": {
+        "type": "Project"
+      }
+    }
+  }
+}
