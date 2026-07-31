@@ -461,6 +461,10 @@ public static class CpmDetector
             var transitivePinning = root.Descendants(ns + "CentralPackageTransitivePinningEnabled").FirstOrDefault();
             var pinningEnabled = transitivePinning?.Value.Equals("true", StringComparison.OrdinalIgnoreCase) ?? false;
 
+            // Check RestoreUseLegacyDependencyResolver (NuGet 6.12 CPM regression workaround)
+            var legacyResolver = root.Descendants(ns + "RestoreUseLegacyDependencyResolver").FirstOrDefault();
+            var legacyResolverEnabled = legacyResolver?.Value.Equals("true", StringComparison.OrdinalIgnoreCase) ?? false;
+
             // Extract package versions defined in CPM
             var packageVersions = root.Descendants(ns + "PackageVersion")
                 .Select(pv => pv.Attribute("Include")?.Value)
@@ -479,6 +483,8 @@ public static class CpmDetector
                 diagnostics.Add("ManagePackageVersionsCentrally is not set to true");
             if (!pinningEnabled)
                 diagnostics.Add("CentralPackageTransitivePinningEnabled is not set to true (recommended for monorepos)");
+            if (pinningEnabled && !legacyResolverEnabled)
+                diagnostics.Add("RestoreUseLegacyDependencyResolver is not set to true — NuGet 6.12 CPM regression workaround required when transitive pinning is enabled");
 
             return new CpmConfig(
                 Enabled: cpmEnabled,
@@ -487,7 +493,8 @@ public static class CpmDetector
                 PackagesPropsPath: packagesPropsPath,
                 PackageVersions: packageVersions,
                 PackageVersionOverrides: packageVersionOverrides,
-                Diagnostic: diagnostics.Count > 0 ? string.Join("; ", diagnostics) : null
+                Diagnostic: diagnostics.Count > 0 ? string.Join("; ", diagnostics) : null,
+                RestoreUseLegacyDependencyResolver: legacyResolverEnabled
             );
         }
         catch (Exception ex)
@@ -499,7 +506,8 @@ public static class CpmDetector
                 PackagesPropsPath: packagesPropsPath,
                 PackageVersions: null,
                 PackageVersionOverrides: null,
-                Diagnostic: $"Failed to parse Directory.Packages.props: {ex.Message}"
+                Diagnostic: $"Failed to parse Directory.Packages.props: {ex.Message}",
+                RestoreUseLegacyDependencyResolver: false
             );
         }
     }

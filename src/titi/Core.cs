@@ -1092,6 +1092,37 @@ public static class Program
             ));
         }
 
+        if (cpm.TransitivePinningEnabled && !cpm.RestoreUseLegacyDependencyResolver)
+        {
+            issues.Add(new titi.Serialization.ValidationIssue(
+                Severity: "warning",
+                Code: "CPM-004",
+                Message: "RestoreUseLegacyDependencyResolver is not enabled",
+                Detail: "Set RestoreUseLegacyDependencyResolver=true in Directory.Packages.props when transitive pinning is enabled to avoid false NU1605 warnings from the NuGet 6.12 CPM regression",
+                Location: cpm.PackagesPropsPath ?? repoRoot
+            ));
+
+            if (applyFix && cpm.PackagesPropsPath != null)
+            {
+                try
+                {
+                    var props = File.ReadAllText(cpm.PackagesPropsPath);
+                    if (!props.Contains("<RestoreUseLegacyDependencyResolver>"))
+                    {
+                        // Insert before the closing PropertyGroup
+                        props = props.Replace("</PropertyGroup>",
+                            "    <RestoreUseLegacyDependencyResolver>true</RestoreUseLegacyDependencyResolver>\n  </PropertyGroup>");
+                        File.WriteAllText(cpm.PackagesPropsPath, props);
+                        Console.Error.WriteLine("Applied RestoreUseLegacyDependencyResolver=true to Directory.Packages.props");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine($"Failed to apply workaround: {ex.Message}");
+                }
+            }
+        }
+
         if (cpm.Enabled && cpm.PackageVersions != null && cpm.PackageVersions.Length == 0)
         {
             issues.Add(new titi.Serialization.ValidationIssue(

@@ -303,7 +303,8 @@ public record CpmConfig(
     string? PackagesPropsPath,
     string[]? PackageVersions,
     string[]? PackageVersionOverrides,
-    string? Diagnostic
+    string? Diagnostic,
+    bool RestoreUseLegacyDependencyResolver
 );
 
 /// <summary>Default CPM config when no Directory.Packages.props exists.</summary>
@@ -316,6 +317,7 @@ public record CpmConfigDefaults
         PackagesPropsPath: null,
         PackageVersions: null,
         PackageVersionOverrides: null,
-        Diagnostic: "No Directory.Packages.props found — CPM not enabled"
+        Diagnostic: "No Directory.Packages.props found — CPM not enabled",
+        RestoreUseLegacyDependencyResolver: false
     );
 }

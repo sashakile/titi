@@ -394,6 +394,7 @@ public class CpmDetectionTests
   <PropertyGroup>
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
     <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
+    <RestoreUseLegacyDependencyResolver>true</RestoreUseLegacyDependencyResolver>
   </PropertyGroup>
   <ItemGroup>
     <PackageVersion Include="Orion.Core.Data" Version="1.0.0" />
@@ -493,6 +494,94 @@ public class CpmDetectionTests
             Assert.True(result.HasPackagesProps);
             Assert.NotNull(result.Diagnostic);
             Assert.Contains("Failed to parse", result.Diagnostic);
+        }
+        finally
+        {
+            if (Directory.Exists(tmpDir)) Directory.Delete(tmpDir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Detect_WithLegacyDependencyResolver_DetectsWorkaround()
+    {
+        var tmpDir = Path.Combine(Path.GetTempPath(), "titi-test-" + Guid.NewGuid());
+        try
+        {
+            Directory.CreateDirectory(tmpDir);
+            var packagesProps = """
+<Project>
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
+    <RestoreUseLegacyDependencyResolver>true</RestoreUseLegacyDependencyResolver>
+  </PropertyGroup>
+</Project>
+""";
+            File.WriteAllText(Path.Combine(tmpDir, "Directory.Packages.props"), packagesProps);
+
+            var result = titi.Versioning.CpmDetector.Detect(tmpDir);
+
+            Assert.True(result.RestoreUseLegacyDependencyResolver);
+            Assert.Null(result.Diagnostic);
+        }
+        finally
+        {
+            if (Directory.Exists(tmpDir)) Directory.Delete(tmpDir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Detect_WithoutLegacyDependencyResolver_ReportsMissing()
+    {
+        var tmpDir = Path.Combine(Path.GetTempPath(), "titi-test-" + Guid.NewGuid());
+        try
+        {
+            Directory.CreateDirectory(tmpDir);
+            var packagesProps = """
+<Project>
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
+  </PropertyGroup>
+</Project>
+""";
+            File.WriteAllText(Path.Combine(tmpDir, "Directory.Packages.props"), packagesProps);
+
+            var result = titi.Versioning.CpmDetector.Detect(tmpDir);
+
+            Assert.False(result.RestoreUseLegacyDependencyResolver);
+            Assert.NotNull(result.Diagnostic);
+            Assert.Contains("RestoreUseLegacyDependencyResolver", result.Diagnostic);
+        }
+        finally
+        {
+            if (Directory.Exists(tmpDir)) Directory.Delete(tmpDir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Detect_LegacyDependencyResolverFalse_ReportsMissing()
+    {
+        var tmpDir = Path.Combine(Path.GetTempPath(), "titi-test-" + Guid.NewGuid());
+        try
+        {
+            Directory.CreateDirectory(tmpDir);
+            var packagesProps = """
+<Project>
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
+    <RestoreUseLegacyDependencyResolver>false</RestoreUseLegacyDependencyResolver>
+  </PropertyGroup>
+</Project>
+""";
+            File.WriteAllText(Path.Combine(tmpDir, "Directory.Packages.props"), packagesProps);
+
+            var result = titi.Versioning.CpmDetector.Detect(tmpDir);
+
+            Assert.False(result.RestoreUseLegacyDependencyResolver);
+            Assert.NotNull(result.Diagnostic);
+            Assert.Contains("RestoreUseLegacyDependencyResolver", result.Diagnostic);
         }
         finally
         {
