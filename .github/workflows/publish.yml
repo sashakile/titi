@@ -1,0 +1,51 @@
+name: Publish to NuGet.org
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  id-token: write  # Required for trusted publishing (OIDC)
+  contents: read
+
+jobs:
+  publish:
+    name: Build, Pack & Publish
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Restore dependencies
+        env:
+          CI: true
+        run: |
+          dotnet restore src/titi/titi.csproj --force-evaluate
+          dotnet restore test/titi/titi.Tests.csproj --locked-mode
+
+      - name: Build
+        run: |
+          dotnet build src/titi/titi.csproj --no-restore --configuration Release
+          dotnet build test/titi/titi.Tests.csproj --no-restore --configuration Release
+
+      - name: Test
+        run: |
+          dotnet test test/titi/titi.Tests.csproj --no-build --configuration Release \
+            --filter "Category!=Integration"
+
+      - name: Pack
+        run: |
+          dotnet pack src/titi/titi.csproj --no-build --configuration Release -o dist/nupkg
+
+      - name: Publish to NuGet.org
+        run: |
+          nupkg=$(ls dist/nupkg/*.nupkg | head -1)
+          echo "Publishing: $nupkg"
+          dotnet nuget push "$nupkg" \
+            --source https://api.nuget.org/v3/index.json
