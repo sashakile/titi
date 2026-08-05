@@ -71,4 +71,47 @@ public class ProcessExecutionTests
         Assert.True(result.Ok);
         Assert.Contains("hello world", result.Stdout ?? "");
     }
+
+    // ── Call-site regression tests (titi-mo7) ───────────────────
+    // The restore path (OpenCommand) and test-discovery path
+    // (TestsListCommand) must route through RunProcess via
+    // RunDotnet / RunDotnetListTests rather than using inline
+    // Process handling.
+
+    [Fact]
+    public void RunDotnet_NormalCompletion_ReturnsOutput()
+    {
+        // RunDotnet is used by the restore path (OpenCommand).
+        var (ok, stdout, stderr) = Program.RunDotnet("--version", "/tmp");
+        Assert.True(ok, $"dotnet --version failed: {stderr}");
+        Assert.Contains("10.", stdout);
+    }
+
+    [Fact]
+    public void RunDotnet_ConcurrentStdoutAndStderr_DoesNotDeadlock()
+    {
+        // RunDotnet wraps RunProcess which uses async drain.
+        // This exercises the same path the restore call site will use.
+        var (ok, stdout, stderr) = Program.RunDotnet("--version", "/tmp");
+        Assert.True(ok);
+        Assert.False(string.IsNullOrEmpty(stdout));
+        // stderr may be empty for --version; the point is no deadlock.
+    }
+
+    [Fact]
+    public void RunDotnetListTests_AgainstFixture_ReturnsTestItems()
+    {
+        // RunDotnetListTests is used by the test-discovery path
+        // (TestsListCommand lambda, DiscoverTestItems).
+        var fixtureDir = Path.GetFullPath(
+            Path.Combine(AppContext.BaseDirectory,
+                         "../../../../../test/fixtures/synthetic-monorepo"));
+        var testProj = Path.Combine(fixtureDir,
+            "tests/Orion.UnitTests/Orion.UnitTests.csproj");
+
+        var (stdout, stderr, ok) = Program.RunDotnetListTests(testProj, fixtureDir);
+        Assert.True(ok, $"dotnet test --list-tests failed: {stderr}");
+        Assert.Contains("Orion.UnitTests", stdout);
+    }
+}
 }

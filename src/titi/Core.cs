@@ -148,24 +148,15 @@ public static class Program
             Console.Error.WriteLine("Regenerating lock file...");
             try
             {
-                var restore = new System.Diagnostics.Process
+                // Route through the safe process runner (titi-mo7): concurrent
+                // drain, bounded timeout, process-tree termination. The prior
+                // inline Process never drained stdout and read ExitCode after a
+                // possibly-expired WaitForExit, which could hang or orphan
+                // dotnet children.
+                var (ok, _, stderr) = RunDotnet("restore --force-evaluate", Environment.CurrentDirectory);
+                if (!ok)
                 {
-                    StartInfo = new System.Diagnostics.ProcessStartInfo
-                    {
-                        FileName = "dotnet",
-                        Arguments = "restore --force-evaluate",
-                        RedirectStandardOutput = true,
-                        RedirectStandardError = true,
-                        UseShellExecute = false,
-                        CreateNoWindow = true
-                    }
-                };
-                restore.Start();
-                restore.WaitForExit(60000);
-                if (restore.ExitCode != 0)
-                {
-                    var err = restore.StandardError.ReadToEnd();
-                    Console.Error.WriteLine($"Warning: Lock file regeneration exited with code {restore.ExitCode}: {err.Trim()}");
+                    Console.Error.WriteLine($"Warning: Lock file regeneration failed: {stderr.Trim()}");
                 }
             }
             catch (Exception ex)
@@ -283,35 +274,15 @@ public static class Program
         {
             try
             {
-                var psi = new System.Diagnostics.ProcessStartInfo
+                // Route through the safe process runner (titi-mo7): concurrent
+                // drain, bounded timeout, process-tree termination. The prior
+                // inline Process drained stdout then stderr sequentially before
+                // checking timeout, which could deadlock on full pipes.
+                var (stdout, stderr, ok) = RunDotnetListTests(projectPath, repoRoot);
+                if (!ok)
                 {
-                    FileName = "dotnet",
-                    // .NET 10 `dotnet test --list-tests` emits PLAIN CONSOLE TEXT —
-                    // there is no JSON output mode for --list-tests (the --report-*
-                    // and --logger flags error out when combined with it). We
-                    // auto-detect JSON-vs-console in Parser.Parse.
-                    Arguments = $"test \"{projectPath}\" --list-tests",
-                    WorkingDirectory = repoRoot,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    UseShellExecute = false,
-                };
-
-                using var proc = System.Diagnostics.Process.Start(psi);
-                if (proc == null)
-                {
-                    Console.Error.WriteLine("Failed to start dotnet process");
+                    Console.Error.WriteLine($"dotnet test --list-tests failed: {stderr.Split('\n').FirstOrDefault()}");
                     return [];
-                }
-
-                var stdout = proc.StandardOutput.ReadToEnd();
-                var stderr = proc.StandardError.ReadToEnd();
-                proc.WaitForExit(60000);
-
-                if (proc.ExitCode != 0)
-                {
-                    Console.Error.WriteLine($"dotnet test --list-tests failed (exit {proc.ExitCode})");
-                    Console.Error.WriteLine(stderr);
                 }
 
                 return titi.TestDiscovery.Parser.Parse(stdout, TestTier.Unit);
