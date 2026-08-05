@@ -30,9 +30,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- ClojureCLR runtime -->
-    <PackageReference Include="Clojure" Version="1.12.2" />
-
     <!-- MSBuild graph construction and evaluation -->
     <PackageReference Include="Microsoft.Build.Locator" Version="1.11.2" />
     <PackageReference Include="Microsoft.Build" Version="18.8.2" ExcludeAssets="runtime" PrivateAssets="all" />
@@ -42,9 +39,9 @@
     <PackageReference Include="Microsoft.VisualStudio.SolutionPersistence" Version="1.0.52" />
   </ItemGroup>
 
-  <!-- Embed Clojure source files as resources -->
+  <!-- Embed MSBuild interop assets -->
   <ItemGroup>
-    <EmbeddedResource Include="clojure/**/*.clj" />
+    <EmbeddedResource Include="interop/**/*.json" />
   </ItemGroup>
 
 </Project>
