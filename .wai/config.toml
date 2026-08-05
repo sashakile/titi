@@ -2,8 +2,8 @@ plugins = []
 
 [project]
 name = "titi"
-version = "2026.4.7"
+version = "2026.7.28"
 description = ""
-tool_commit = "bf66bc0"
+tool_commit = "872c206"
 
 [llm]

@@ -21,7 +21,15 @@ dotnet restore test/titi/titi.Tests.csproj --locked-mode 2>/dev/null || {
   exit 1
 }
 
-# Step 2: Run tests (exclude slow integration tests)
+# Step 2: Validate grounded claims (dont)
+echo "   Validating grounded claims..."
+cd "$REPO_ROOT"
+if ! dont check 2>/dev/null; then
+  echo "❌ FAILED: dont check — some claims are not grounded. Run 'dont doctor --fix' to resolve."
+  exit 1
+fi
+
+# Step 3: Run tests (exclude slow integration tests)
 echo "   Running tests..."
 cd "$REPO_ROOT"
 dotnet test test/titi/titi.Tests.csproj --no-restore --filter "Category!=Integration" 2>&1 | tail -3
