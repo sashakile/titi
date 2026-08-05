@@ -114,4 +114,3 @@ public class ProcessExecutionTests
         Assert.Contains("Orion.UnitTests", stdout);
     }
 }
-}
