@@ -22,7 +22,7 @@ public static class Formatter
         return JsonSerializer.Serialize(wrapper, TitiJsonContext.Default.TestItemList);
     }
 
-    public static string FormatAffectedUpgrade(AffectedSet affected)
+    public static string FormatAffectedUpgrade(AffectedSet affected, double edgeFreshness = 1.0, int historyDepth = 10)
     {
         var selectedTests = affected.SelectedTests.Select(st => new SelectedTestEntry(
             TestId: st.TestId,
@@ -35,12 +35,14 @@ public static class Formatter
             FallbackReason: st.FallbackReason?.ToString()
         )).ToArray();
 
-        var allResolved = affected.ChangedFiles.Length > 0
-            ? affected.DirectlyAffected.Length
-            : 0;
-        var confidence = affected.ChangedFiles.Length > 0
-            ? (double)allResolved / affected.ChangedFiles.Length
-            : 1.0;
+        // Use the documented confidence model (titi-e59): weighted combination
+        // of resolution ratio, edge freshness, and history depth, instead of
+        // the old project-count / file-count calculation.
+        var resolvedFiles = affected.ResolvedFiles.Length > 0
+            ? affected.ResolvedFiles
+            : affected.ChangedFiles;
+        var confidence = titi.Safety.Selection.ComputeConfidence(
+            affected.ChangedFiles, resolvedFiles, edgeFreshness, historyDepth);
 
         var output = new AffectedSetOutput(
             ChangedFiles: affected.ChangedFiles,

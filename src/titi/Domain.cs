@@ -291,6 +291,9 @@ public record AffectedSet(
 {
     /// <summary>Per-test selection results (populated when test edges are available)</summary>
     public TestSelectionResult[] SelectedTests { get; init; } = [];
+
+    /// <summary>Changed files that were successfully mapped to affected projects</summary>
+    public string[] ResolvedFiles { get; init; } = [];
 }
 
 // ── Version Management Domain Types (VN-07) ────────────────────

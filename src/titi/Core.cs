@@ -243,8 +243,12 @@ public static class Program
             allItems.ToArray(), edges, alwaysRun, affected.ChangedFiles);
         affected = affected with { SelectedTests = selectedTests };
 
+        // Compute edge freshness and history depth for the confidence model
+        var edgeFreshnessAffected = edges.Length > 0 ? 1.0 : 0.0;
+        var historyDepthAffected = history.Count;
+
         // Print result using upgraded formatter
-        Console.WriteLine(Formatter.FormatAffectedUpgrade(affected));
+        Console.WriteLine(Formatter.FormatAffectedUpgrade(affected, edgeFreshnessAffected, historyDepthAffected));
         return 0;
     }
 
@@ -856,13 +860,16 @@ public static class Program
             .Where(i => selectedTests.Any(s => s.TestId == i.TestId && s.Selected))
             .ToArray();
 
-        // Determine confidence
-        var allResolved = affected.ChangedFiles.Length > 0
-            ? affected.DirectlyAffected.Length
-            : 0;
-        var confidence = affected.ChangedFiles.Length > 0
-            ? (double)allResolved / affected.ChangedFiles.Length
-            : 1.0;
+        // Determine confidence using the documented weighted model (titi-e59).
+        // The old code used DirectlyAffected.Length / ChangedFiles.Length which
+        // could assign a low score to a fully resolved multi-file change.
+        var resolvedFiles = affected.ResolvedFiles.Length > 0
+            ? affected.ResolvedFiles
+            : affected.ChangedFiles;
+        var edgeFreshness = edges.Length > 0 ? 1.0 : 0.0;
+        var historyDepth = history.Count;
+        var confidence = titi.Safety.Selection.ComputeConfidence(
+            affected.ChangedFiles, resolvedFiles, edgeFreshness, historyDepth);
 
         // ── Exit on low confidence before emitting partial output ──
         // When confidence falls below the configured threshold, suppress

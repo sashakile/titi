@@ -96,6 +96,23 @@ public class SafetyTests
     }
 
     [Fact]
+    public void ComputeConfidence_MultiFileSingleProject_ReturnsWeightedScore()
+    {
+        // Regression: the old code used DirectlyAffected.Length / ChangedFiles.Length
+        // which gives 0.2 for 1 project with 5 changed files.
+        // The proper model uses resolved file count, not project count.
+        var confidence = titi.Safety.Selection.ComputeConfidence(
+            changedFiles: ["src/Foo.cs", "src/Bar.cs", "src/Baz.cs", "src/Qux.cs", "src/Quxx.cs"],
+            resolvedFiles: ["src/Foo.cs", "src/Bar.cs", "src/Baz.cs", "src/Qux.cs", "src/Quxx.cs"],
+            edgeFreshness: 1.0,
+            historyDepth: 10
+        );
+
+        // All files resolved → resolution ratio 1.0 * 0.6 + 1.0 * 0.25 + 1.0 * 0.15 = 1.0
+        Assert.Equal(1.0, confidence, precision: 2);
+    }
+
+    [Fact]
     public void ComputeConfidence_HalfResolved_ReturnsWeightedValue()
     {
         var confidence = titi.Safety.Selection.ComputeConfidence(

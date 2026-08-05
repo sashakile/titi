@@ -35,6 +35,7 @@ public static class Analyzer
 
         var directlySet = new HashSet<string>();
         var transitiveSet = new HashSet<string>();
+        var resolvedFiles = new List<string>();
         var projectIndex = new Dictionary<string, (string Path, ProjectDescriptor Project)>();
 
         // Build a path→project mapping (check SourceDir and path prefixes)
@@ -80,6 +81,7 @@ public static class Analyzer
                 {
                     directlySet.Add(nodePath);
                     matched = true;
+                    resolvedFiles.Add(changedFile);
                     break;
                 }
             }
@@ -94,6 +96,7 @@ public static class Analyzer
                         || proj.Path.Contains(changedName, StringComparison.OrdinalIgnoreCase))
                     {
                         directlySet.Add(nodePath);
+                        resolvedFiles.Add(changedFile);
                         break;
                     }
                 }
@@ -126,7 +129,10 @@ public static class Analyzer
             DirectlyAffected: directlySet.Select(p => graph.Nodes[p].Project).ToArray(),
             TransitivelyAffected: transitiveSet.Select(p => graph.Nodes[p].Project).ToArray(),
             AffectedTests: new TieredTestSet([], [], [], [])
-        );
+        )
+        {
+            ResolvedFiles = resolvedFiles.ToArray()
+        };
     }
 
     /// <summary>Run git diff to get changed files between two refs.</summary>
