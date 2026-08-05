@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.1 — 2026-08-05
+
+### Chores
+- Embed README in NuGet package with AI-Assisted Development notice.
+
 ## 0.3.0 — 2026-08-05
 
 ### Features

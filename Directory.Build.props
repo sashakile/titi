@@ -1,7 +1,7 @@
 <Project>
 
   <PropertyGroup>
-    <Version>0.3.0</Version>
+    <Version>0.3.1</Version>
     <Authors>sashakile</Authors>
     <Company>sashakile</Company>
     <Description>titi — monorepo CLI for C# projects. Affected-set computation, solution generation, testaruda adapter, and more.</Description>
