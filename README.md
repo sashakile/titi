@@ -1,6 +1,13 @@
 # titi
 
 [![tracked with wai](https://img.shields.io/badge/tracked%20with-wai-blue)](https://github.com/charly-vibes/wai)
+[![NuGet](https://img.shields.io/nuget/v/titi)](https://www.nuget.org/packages/titi)
+
+> **⚠ AI-Assisted Development.** This project is built through a structured Human–AI
+> pair-programming workflow. Substantive changes are tracked in specifications and
+> tickets, tested, reviewed with automated tools, and approved by the maintainer.
+> The project has **not** had a professional security audit or human line-by-line
+> review of the entire codebase.
 
 Small Mono Repo tool for C# Projects.
 

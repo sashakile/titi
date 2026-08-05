@@ -13,6 +13,7 @@
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>titi</ToolCommandName>
     <PackageId>titi</PackageId>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
 
     <!-- Suppress AOT analysis warnings during build (only meaningful during publish) -->
     <NoWarn>$(NoWarn);IL2026;IL3050;IL2104</NoWarn>
@@ -27,6 +28,11 @@
     <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
       <_Parameter1>titi.Tests</_Parameter1>
     </AssemblyAttribute>
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Bundle the repo README into the NuGet package (shown on nuget.org) -->
+    <None Include="../../README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
 
   <ItemGroup>
