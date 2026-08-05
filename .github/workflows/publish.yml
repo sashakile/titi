@@ -43,9 +43,18 @@ jobs:
         run: |
           dotnet pack src/titi/titi.csproj --no-build --configuration Release -o dist/nupkg
 
+      # Exchange the GitHub OIDC token for a short-lived NuGet API key
+      # via trusted publishing (no persistent secrets required).
+      - name: NuGet login (OIDC → temp API key)
+        uses: NuGet/login@v1
+        id: login
+        with:
+          user: sashakile  # nuget.org profile name (package owner)
+
       - name: Publish to NuGet.org
         run: |
           nupkg=$(ls dist/nupkg/*.nupkg | head -1)
           echo "Publishing: $nupkg"
           dotnet nuget push "$nupkg" \
+            --api-key "${{ steps.login.outputs.NUGET_API_KEY }}" \
             --source https://api.nuget.org/v3/index.json
