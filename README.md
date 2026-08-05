@@ -6,7 +6,7 @@ Small Mono Repo tool for C# Projects.
 
 ## Status: Tracer Bullet Complete
 
-The tracer bullet (`titi open <package-id>`) and testaruda adapter (Phase 1 + Phase 2) are implemented. 219+ tests pass.
+The tracer bullet (`titi open <package-id>`) and testaruda adapter (Phase 1 + Phase 2) are implemented. 433+ tests pass.
 Core test-impact-analysis primitives (test-item detection, edges, selection, safety model) are built.
 Next: cascading version bumps and production hardening.
 
