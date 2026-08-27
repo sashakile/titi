@@ -26,7 +26,11 @@ jobs:
 
       - name: Restore dependencies
         run: |
-          dotnet restore src/titi/titi.csproj --locked-mode
+          # Source project: PublishAot=true injects RID-specific AOT packages
+          # whose versions float with the SDK bundle, so locked-mode restore
+          # drifts between environments (NU1004). Same strategy as ci.yml.
+          dotnet restore src/titi/titi.csproj --force-evaluate
+          # Test project (no AOT) restores with locked mode for determinism.
           dotnet restore test/titi/titi.Tests.csproj --locked-mode
           dotnet restore test/fixtures/synthetic-monorepo/tests/Orion.UnitTests/Orion.UnitTests.csproj
 
