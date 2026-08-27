@@ -62,8 +62,9 @@ public class SyntheticFixtureTests
         var edgesPath = Path.Combine(titiDir, "test-cache", "edges", "edges.json");
         Assert.True(File.Exists(edgesPath), $"edge index not found at {edgesPath}");
 
-        var fingerprintPath = Path.Combine(titiDir, "test-cache", "fingerprint");
-        Assert.True(File.Exists(fingerprintPath), "fingerprint not written for incremental skip");
+        var fingerprintsPath = Path.Combine(titiDir, "test-cache", "edges", "project-fingerprints.json");
+        Assert.True(File.Exists(fingerprintsPath),
+            "project fingerprints not written for incremental skip (TID-11: per-project fingerprints)");
 
         // The fixture's tests exercise library code (Orion.Core.Data.Parser/Foo,
         // Orion.Auth.AuthService, Orion.Storage.Repository), so the recorded

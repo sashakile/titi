@@ -124,6 +124,11 @@ public static class Parser
 
             var edges = new List<TestToSourceEdge>();
 
+            // coverlet emits filenames relative to the <sources> root (the
+            // common root of covered source files), not the caller-supplied
+            // root. Try embedded roots first, then fall back to callerRoot.
+            var sourceRoots = CollectSourceRoots(root, sourceRoot);
+
             foreach (var pkg in root.Descendants("package"))
             {
                 foreach (var cls in pkg.Descendants("class"))
@@ -132,12 +137,12 @@ public static class Parser
                     if (string.IsNullOrEmpty(filename))
                         continue;
 
-                    // Canonicalize the coverage filename against sourceRoot and
-                    // reject paths that escape it. coverlet emits sourceRoot-
-                    // relative filenames, but the report is caller-controlled:
-                    // a '..' segment or absolute path outside sourceRoot would
-                    // produce edges that cross-match files outside the repo.
-                    var sourcePath = ResolveUnderRoot(filename, sourceRoot);
+                    // Canonicalize the coverage filename against the source
+                    // roots and reject paths that escape them. A '..' segment
+                    // or absolute path outside every root yields no edge.
+                    var sourcePath = sourceRoots
+                        .Select(candidate => ResolveUnderRoot(filename, candidate))
+                        .FirstOrDefault(resolved => resolved != null);
                     if (sourcePath == null)
                         continue;
 
@@ -188,6 +193,27 @@ public static class Parser
         {
             return [];
         }
+    }
+
+    /// <summary>
+    /// Build the ordered candidate source roots: embedded &lt;sources&gt;/&lt;source&gt;
+    /// values first (authoritative for coverlet output), then the caller-supplied
+    /// root as fallback. Deduplicates, preserving order.
+    /// </summary>
+    static List<string> CollectSourceRoots(XElement rootElement, string callerRoot)
+    {
+        var roots = new List<string>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var source in rootElement.Descendants("source"))
+        {
+            var value = source.Value.Trim();
+            if (value.Length == 0 || !seen.Add(value))
+                continue;
+            roots.Add(value);
+        }
+        if (!string.IsNullOrEmpty(callerRoot) && seen.Add(callerRoot))
+            roots.Add(callerRoot);
+        return roots;
     }
 
     // Canonicalize a coverage filename against sourceRoot. Accepts sourceRoot-

@@ -71,6 +71,49 @@ public class CoverageCanonicalizationTests
     }
 
     [Fact]
+    public void ParseCobertura_EmbeddedSourcesRoot_WinsOverCallerRoot()
+    {
+        // coverlet emits filenames relative to the <sources> root (the common
+        // root of the covered source files), which may be a subdirectory of
+        // the repo root the caller passes. The embedded root must win.
+        const string Template = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <coverage line-rate="0.5" branch-rate="0.5" lines-covered="1" lines-valid="2" branches-covered="0" branches-valid="0" complexity="1.0" version="0.1" timestamp="1234567890">
+          <sources>
+            <source>/repo/libs/</source>
+          </sources>
+          <packages>
+            <package name="P" line-rate="0.5" branch-rate="0.5" complexity="1.0">
+              <classes>
+                <class name="C" filename="Orion.Core.Data/Parser.cs" line-rate="0.5" branch-rate="0.5" complexity="1.0">
+                  <methods>
+                    <method name="M" signature="()" line-rate="0.5" branch-rate="0.5">
+                      <lines>
+                        <line number="10" hits="3" branch="false"/>
+                      </lines>
+                    </method>
+                  </methods>
+                  <lines>
+                    <line number="10" hits="3" branch="false"/>
+                  </lines>
+                </class>
+              </classes>
+            </package>
+          </packages>
+        </coverage>
+        """;
+
+        var edges = titi.Coverage.Parser.ParseCobertura(Template, "/repo");
+
+        Assert.NotEmpty(edges);
+        Assert.All(edges, e =>
+        {
+            Assert.True(e.To.StartsWith("/repo/libs/"),
+                $"edge.To '{e.To}' must resolve against the embedded <sources> root (/repo/libs/), not the caller root");
+        });
+    }
+
+    [Fact]
     public void ParseCobertura_RelativePathInsideSourceRoot_IsAccepted()
     {
         // The normal case: a sourceRoot-relative filename (as emitted by coverlet).
